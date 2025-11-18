@@ -8,8 +8,8 @@ class FaceDetector:
 
     def detect(self, frame):
         """
-        返回：
-        - 人脸 bbox 列表 [(x1, y1, x2, y2), ...]
+        Return:
+        - List of face bounding boxes [(x1, y1, x2, y2), ...]
         """
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = self.detector.process(rgb)

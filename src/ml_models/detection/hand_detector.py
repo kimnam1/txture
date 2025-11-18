@@ -11,9 +11,9 @@ class HandDetector:
 
     def detect(self, frame):
         """
-        返回：
-        - hand_landmarks: 每个手的 21 个关键点列表
-          每个关键点是 (x, y, z, visibility)
+        Return:
+        - hand_landmarks: A list of 21 keypoints for each hand
+          Each keypoint is (x, y, z, visibility)
         """
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = self.detector.process(rgb)
