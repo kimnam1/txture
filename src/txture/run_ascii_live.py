@@ -37,7 +37,7 @@ def main():
     ap.add_argument(
         "--fps",
         type=float,
-        default=5.0,
+        default=30.0,
         help="Target FPS for ASCII rendering",
     )
     ap.add_argument(
@@ -84,8 +84,7 @@ def main():
         print("[red]Error:[/red] Cannot read from camera")
         return
 
-    sys.stdout.write("\x1b[2J")
-    sys.stdout.write("\x1b[?25l")
+    sys.stdout.write("\x1b[?1049h\x1b[H\x1b[2J\x1b[?25l")
     sys.stdout.flush()
 
     print(
@@ -100,10 +99,14 @@ def main():
                 time.sleep(0.1)
                 continue
 
+            terminal_size = shutil.get_terminal_size((80, 24))
+            term_cols = terminal_size.columns
+            term_rows = terminal_size.lines
+
             if args.cols > 0:
                 cols = args.cols
             else:
-                cols = max(20, shutil.get_terminal_size((80, 24)).columns - 2)
+                cols = max(20, term_cols - 2)
 
             features = process_frame(frame, outline_mode=args.outline)
 
@@ -137,6 +140,12 @@ def main():
                 colorize=args.color,
             )
 
+            max_ascii_rows = max(1, term_rows - 2)
+            if len(lines) > max_ascii_rows:
+                lines = lines[:max_ascii_rows]
+                if colors is not None:
+                    colors = colors[:max_ascii_rows]
+
             sys.stdout.write("\x1b[H\x1b[2J")
 
             if args.color and colors is not None:
@@ -151,6 +160,17 @@ def main():
             else:
                 for line in lines:
                     sys.stdout.write(line + "\n")
+
+            mode = "outline" if args.outline else "normal"
+            status = f"[mode={mode}] [fps={args.fps:.1f}] [cols={cols}] [charset={label}]"
+            padded = status.center(term_cols)
+
+            current_line = len(lines) + 1
+            while current_line < term_rows - 1:
+                sys.stdout.write("\n")
+                current_line += 1
+            sys.stdout.write(padded + "\n")
+
             sys.stdout.flush()
 
             time.sleep(max(0.0, 1.0 / args.fps))
@@ -158,7 +178,7 @@ def main():
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        sys.stdout.write("\x1b[?25h")
+        sys.stdout.write("\x1b[?1049l\x1b[?25h")
         sys.stdout.flush()
 
 

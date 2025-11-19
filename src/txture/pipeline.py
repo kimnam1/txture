@@ -5,7 +5,7 @@ from txture.config import (
     CANNY_LOW,
     CANNY_HIGH,
     BLUR_KERNEL_SIZE,
-    SOBEL_KSIZE,
+    SOBEL_KERNEL_SIZE,
     MORPH_KERNEL_SIZE,
 )
 
@@ -37,8 +37,8 @@ def process_frame(frame, outline_mode: bool) -> FrameFeatures:
         edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
         edges = cv2.dilate(edges, kernel, iterations=1)
 
-        gx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=SOBEL_KSIZE)
-        gy = cv2.Sobel(blur, cv2.CV_64F, 0, 1, ksize=SOBEL_KSIZE)
+        gx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=SOBEL_KERNEL_SIZE)
+        gy = cv2.Sobel(blur, cv2.CV_64F, 0, 1, ksize=SOBEL_KERNEL_SIZE)
 
         angle = np.rad2deg(np.arctan2(gy, gx))
         angle[angle < 0] += 180

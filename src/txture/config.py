@@ -1,6 +1,6 @@
 # Edge detection and processing parameters
 CANNY_LOW = 30
 CANNY_HIGH = 100
-BLUR_KSIZE = (5, 5)
-SOBEL_KSIZE = 5
-MORPH_KERNEL = (3, 3)
+BLUR_KERNEL_SIZE = (5, 5)
+SOBEL_KERNEL_SIZE = 5
+MORPH_KERNEL_SIZE = (3, 3)
