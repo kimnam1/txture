@@ -4,8 +4,13 @@
 
 ```bash
 uv venv
-source .venv/bin/activate
+```
 
+```bash
+source .venv/bin/activate
+```
+
+```bash
 uv pip install -e .
 ```
 
@@ -15,7 +20,8 @@ uv pip install -e .
 uv run txture-live
 ```
 
-Options:
+### Options
+
 Show OpenCV preview window.
 
 ```bash
@@ -49,7 +55,3 @@ Target ASCII frame rate.
 ## Exit
 
 Ctrl + C
-
-```
-
-```
