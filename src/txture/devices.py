@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 from .detect_os import backend_candidates, detect_os
+from .spinner import Spinner
 
 
 @dataclass
@@ -92,7 +93,10 @@ def auto_pick_camera(max_devices: int = 5) -> Optional[CameraInfo]:
 def open_auto_camera(
     max_devices: int = 5,
 ) -> Tuple[cv2.VideoCapture, CameraInfo]:
+    spinner = Spinner(message="Detecting camera device...")
+    spinner.start()
     info = auto_pick_camera(max_devices=max_devices)
+    spinner.stop()
     if info is None:
         raise RuntimeError("No camera device found")
     cap = open_with_backend(info.index, info.backend)

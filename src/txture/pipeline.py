@@ -13,6 +13,7 @@ from txture.config import (
 @dataclass
 class FrameFeatures:
     orig: np.ndarray
+    hsv: np.ndarray
     gray: np.ndarray
     det_vis: np.ndarray  # detection visualization
     processed: np.ndarray
@@ -24,6 +25,7 @@ class FrameFeatures:
 def process_frame(frame, outline_mode: bool) -> FrameFeatures:
     orig = frame.copy()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     # just stub for now. Replace with actual detection and processing logic.
     hand_mask = None
@@ -71,4 +73,5 @@ def process_frame(frame, outline_mode: bool) -> FrameFeatures:
         edge_dir=edge_dir,
         hand_mask=hand_mask,
         face_mask=face_mask,
+        hsv=hsv,
     )

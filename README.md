@@ -15,12 +15,41 @@ uv pip install -e .
 uv run txture-live
 ```
 
-Optional preview window (OpenCV)
+Options:
+Show OpenCV preview window.
 
 ```bash
-uv run txture-live --preview
+--preview
+```
+
+Enable hidden controller for live adjustments.
+
+```bash
+--control
+```
+
+Enable ANSI true-color ASCII output.
+
+```bash
+--color
+```
+
+NAME Choose charset (ascii_all, letters, digits, etc.).
+
+```bash
+--set
+```
+
+Target ASCII frame rate.
+
+```bash
+--fps N
 ```
 
 ## Exit
 
 Ctrl + C
+
+```
+
+```
