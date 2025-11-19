@@ -23,19 +23,18 @@ def ascii_all() -> Tuple[str, str]:
 
 
 def ascii_letters_only() -> Tuple[str, str]:
-    return "ascii_letters_only", _sanitize(
-        string.ascii_letters, target_width=1
-    )
+    raw = string.ascii_letters + " "
+    return "ascii_letters_only", _sanitize(raw, target_width=1)
 
 
 def ascii_punctuation_only() -> Tuple[str, str]:
-    return "ascii_punctuation_only", _sanitize(
-        string.punctuation, target_width=1
-    )
+    raw = string.punctuation + " "
+    return "ascii_punctuation_only", _sanitize(raw, target_width=1)
 
 
 def ascii_digits_only() -> Tuple[str, str]:
-    return "ascii_digits_only", _sanitize(string.digits, target_width=1)
+    raw = string.digits + " "
+    return "ascii_digits_only", _sanitize(raw, target_width=1)
 
 
 def ascii_letters_digits_punct() -> Tuple[str, str]:
@@ -43,8 +42,8 @@ def ascii_letters_digits_punct() -> Tuple[str, str]:
     return "ascii_letters_digits_punct", _sanitize(raw, target_width=1)
 
 
-# _CJK_SEED_HANGUL = "·.:;가각간갈감갑값강개객거걱건검겁것게겨결경고과곽관광교구국군권귀규극근금기"
-# _CJK_SEED_HANZI = "一二三上下大小中日月田目口山川林森雨風海国图爱梦"
+# _CJK_SEED_HANGUL = " ·.:;가각간갈감갑값강개객거걱건검겁것게겨결경고과곽관광교구국군권귀규극근금기"
+# _CJK_SEED_HANZI = " 一二三上下大小中日月田目口山川林森雨風海国图爱梦"
 
 
 # def hangul_subset() -> Tuple[str, str]:
