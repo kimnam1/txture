@@ -49,7 +49,10 @@ def main():
         help="Target FPS for ASCII rendering",
     )
     ap.add_argument(
-        "--color", action="store_true", help="Colorize ASCII output"
+        "--color",
+        action="store_true",
+        default=True,
+        help="Colorize ASCII output",
     )
     ap.add_argument(
         "--cols", type=int, default=0, help="columns count. 0=auto"
@@ -65,6 +68,7 @@ def main():
     ap.add_argument(
         "--control",
         action="store_true",
+        default=True,
         help="Enable controller window",
     )
     ap.add_argument("--aspect", type=float, default=2.0)
