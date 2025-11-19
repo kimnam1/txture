@@ -54,18 +54,26 @@ def main():
     ap.add_argument(
         "--outline", action="store_true", help="Use outline mode (edge based)"
     )
+    ap.add_argument(
+        "--control",
+        action="store_true",
+        help="Enable control mode",
+    )
     ap.add_argument("--aspect", type=float, default=2.0)
 
     args = ap.parse_args()
 
-    files = discover_metric_files()
-    if args.set not in files:
-        print(f'[red]Error:[/red] Metric set "{args.set}" not found.')
-        return
-    lut = load_lut(files[args.set])
-    label = args.set
+    current_set = args.set
+    use_color = args.color
+    use_outline = args.outline
 
-    print(f"[info] set = {label} color = {args.color} fps = {args.fps} ")
+    files = discover_metric_files()
+    if current_set not in files:
+        print(f'[red]Error:[/red] Metric set "{current_set}" not found.')
+        return
+    lut = load_lut(files[current_set])
+    label = current_set
+    print(f"[info] set = {label} color = {use_color} fps = {args.fps} ")
 
     cap, cam_info = open_auto_camera(max_devices=5)
     print(
@@ -92,6 +100,13 @@ def main():
         file=sys.stderr,
     )
 
+    control_blank = None
+    if args.control:
+        cv2.namedWindow("control", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("control", 1, 1)
+        cv2.moveWindow("control", -100, -100)
+        control_blank = np.zeros((1, 1, 3), dtype=np.uint8)
+
     try:
         while True:
             ok, frame = cap.read()
@@ -108,7 +123,9 @@ def main():
             else:
                 cols = max(20, term_cols - 2)
 
-            features = process_frame(frame, outline_mode=args.outline)
+            features = process_frame(frame, outline_mode=use_outline)
+
+            key = -1
 
             if args.preview:
                 vis_orig = features.orig
@@ -131,13 +148,34 @@ def main():
                 if key == 27:
                     break
                 # continue
+            elif args.control and control_blank is not None:
+                cv2.imshow("control", control_blank)
+                key = cv2.waitKey(1) & 0xFF
+                if key == 27:
+                    break
+                elif key == ord("o"):
+                    use_outline = not use_outline
+                elif key == ord("c"):
+                    use_color = not use_color
+                elif key == ord("p"):
+                    new_set = "ascii_punctuation_only"
+                    if new_set in files:
+                        current_set = new_set
+                        lut = load_lut(files[new_set])
+                        label = new_set
+                elif key == ord("a"):
+                    new_set = "ascii_all"
+                    if new_set in files:
+                        current_set = new_set
+                        lut = load_lut(files[new_set])
+                        label = new_set
 
             lines, colors = frame_to_ascii(
                 features.processed,
                 lut,
                 cols=cols,
                 char_aspect=args.aspect,
-                colorize=args.color,
+                colorize=use_color,
             )
 
             max_ascii_rows = max(1, term_rows - 2)
@@ -162,7 +200,7 @@ def main():
                     sys.stdout.write(line + "\n")
 
             mode = "outline" if args.outline else "normal"
-            status = f"[mode={mode}] [fps={args.fps:.1f}] [cols={cols}] [charset={label}]"
+            status = f"[mode={mode}] [fps={args.fps:.1f}] [cols={cols}] [charset={label}] [color={use_color}]"
             padded = status.center(term_cols)
 
             current_line = len(lines) + 1
