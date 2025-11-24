@@ -1,6 +1,4 @@
-import cv2
 import sys
-import time
 import argparse
 
 from txture.devices import auto_scan_devices

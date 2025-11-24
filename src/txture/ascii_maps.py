@@ -4,11 +4,15 @@ import json
 import numpy as np
 from datetime import datetime
 
+ASCII_SPACE = " "
 ASCII_LETTERS = string.ascii_letters
 ASCII_DIGITS = string.digits
 ASCII_PUNCTUATION = string.punctuation
-ASCII_SPACE = " "
 ASCII_ALL = ASCII_LETTERS + ASCII_DIGITS + ASCII_PUNCTUATION + ASCII_SPACE
+
+ASCII_LETTERS_ONLY = ASCII_LETTERS + ASCII_SPACE
+ASCII_DIGITS_ONLY = ASCII_DIGITS + ASCII_SPACE
+ASCII_PUNCTUATION_ONLY = ASCII_PUNCTUATION + ASCII_SPACE
 
 
 def build_glyph_metrics(chars, font_path, font_size, canvas_size=32, thr=200):

@@ -22,7 +22,8 @@ def main():
     # label, chars = ascii_all()
     # label, chars = ascii_letters_digits_punct()
     # label, chars = ascii_letters_only()
-    label, chars = ascii_punctuation_only()
+    # label, chars = ascii_punctuation_only()
+    label, chars = ascii_digits_only()
 
     font_size = 16
     canvas_size = 32
