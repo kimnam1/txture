@@ -14,6 +14,8 @@ ASCII_LETTERS_ONLY = ASCII_LETTERS + ASCII_SPACE
 ASCII_DIGITS_ONLY = ASCII_DIGITS + ASCII_SPACE
 ASCII_PUNCTUATION_ONLY = ASCII_PUNCTUATION + ASCII_SPACE
 
+ASCII_DOTS_ONLY = "•" + ASCII_SPACE
+
 
 def build_glyph_metrics(chars, font_path, font_size, canvas_size=32, thr=200):
     font = ImageFont.truetype(str(font_path), font_size)
@@ -48,6 +50,21 @@ def make_ramp(metrics, invert=False):
 def make_lut(ramp, levels=256):
     n = len(ramp)
     return [ramp[int(v * (n - 1) / (levels - 1))] for v in range(levels)]
+
+
+def make_dot_lut(threshold: int = 180) -> list[str]:
+    space = " "
+    dot = "•"
+
+    lut = []
+
+    for v in range(256):
+        if v < threshold:
+            lut.append(dot)
+        else:
+            lut.append(space)
+
+    return lut
 
 
 def save_metrics_json(path, font_meta, metrics, ramp, lut):

@@ -5,11 +5,14 @@ from txture.charsets import (
     ascii_punctuation_only,
     ascii_digits_only,
     ascii_letters_digits_punct,
+    unicode_punctuation_only,
+    ascii_dots_only,
 )
 from txture.ascii_maps import (
     build_glyph_metrics,
     make_ramp,
     make_lut,
+    make_dot_lut,
     save_metrics_json,
 )
 
@@ -23,7 +26,9 @@ def main():
     # label, chars = ascii_letters_digits_punct()
     # label, chars = ascii_letters_only()
     # label, chars = ascii_punctuation_only()
-    label, chars = ascii_digits_only()
+    # label, chars = ascii_digits_only()
+    # label, chars = unicode_punctuation_only()
+    label, chars = ascii_dots_only()
 
     font_size = 16
     canvas_size = 32
@@ -35,7 +40,10 @@ def main():
 
     ramp = make_ramp(metrics, invert=False)
 
-    lut = make_lut(ramp, levels=256)
+    if label == "ascii_dots_only":
+        lut = make_dot_lut(threshold=thr)
+    else:
+        lut = make_lut(ramp, levels=256)
 
     meta = {
         "charset_label": label,

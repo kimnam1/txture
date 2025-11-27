@@ -37,7 +37,7 @@ def process_frame(frame, outline_mode: bool) -> FrameFeatures:
         kernel = np.ones(MORPH_KERNEL_SIZE, dtype=np.uint8)
         edges = cv2.Canny(blur, CANNY_LOW, CANNY_HIGH)
         edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
-        edges = cv2.dilate(edges, kernel, iterations=1)
+        edges = cv2.dilate(edges, kernel, iterations=2)
 
         gx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=SOBEL_KERNEL_SIZE)
         gy = cv2.Sobel(blur, cv2.CV_64F, 0, 1, ksize=SOBEL_KERNEL_SIZE)

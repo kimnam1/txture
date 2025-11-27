@@ -32,6 +32,20 @@ def ascii_punctuation_only() -> Tuple[str, str]:
     return "ascii_punctuation_only", _sanitize(raw, target_width=1)
 
 
+UNICODE_PUNCT = (
+    string.punctuation + "¡¢£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿×÷“”‘’„‟‹›–—…•"
+)
+
+
+def unicode_punctuation_only() -> tuple[str, str]:
+    return "unicode_punctuation_only", _sanitize(UNICODE_PUNCT, target_width=1)
+
+
+def ascii_dots_only() -> Tuple[str, str]:
+    raw = "•" + " "
+    return "ascii_dots_only", _sanitize(raw, target_width=1)
+
+
 def ascii_digits_only() -> Tuple[str, str]:
     raw = string.digits + " "
     return "ascii_digits_only", _sanitize(raw, target_width=1)

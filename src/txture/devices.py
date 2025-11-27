@@ -70,8 +70,13 @@ def probe_device(
 def auto_scan_devices(
     max_devices: int = 5,
 ) -> Tuple[str, List[str], List[CameraInfo]]:
+    spinner = Spinner(message="Scanning OS...")
+    spinner.start()
     os_name = detect_os()
+    spinner.stop()
     backends = backend_candidates(os_name)
+    spinner = Spinner(message="Scanning camera devices...")
+    spinner.start()
 
     found: List[CameraInfo] = []
 
@@ -80,6 +85,7 @@ def auto_scan_devices(
         if info is not None:
             found.append(info)
             break  # stop after first found device
+    spinner.stop()
     return os_name, backends, found
 
 
@@ -93,10 +99,7 @@ def auto_pick_camera(max_devices: int = 5) -> Optional[CameraInfo]:
 def open_auto_camera(
     max_devices: int = 5,
 ) -> Tuple[cv2.VideoCapture, CameraInfo]:
-    spinner = Spinner(message="Detecting camera device...")
-    spinner.start()
     info = auto_pick_camera(max_devices=max_devices)
-    spinner.stop()
     if info is None:
         raise RuntimeError("No camera device found")
     cap = open_with_backend(info.index, info.backend)

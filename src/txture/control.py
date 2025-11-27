@@ -67,8 +67,12 @@ def handle_visual_key(state: ControllerState, key: int) -> None:
         state.charset = "ascii_digits_only"
     elif key == ord("a"):
         state.charset = "ascii_all"
+    elif key == ord("c"):
+        state.color = not state.color
     elif key == ord("o"):
         state.outline = not state.outline
+    elif key == ord("."):
+        state.charset = "ascii_dots_only"
     elif key in (8, 127):  # backspace
         state.mode = "LIVE"
 
@@ -85,12 +89,12 @@ def handle_tone_key(state: ControllerState, key: int) -> None:
 
 
 def handle_param_key(state: ControllerState, key: int) -> None:
-    if key == 81:  # left arrow
+    if key in (81, 2, ord("h"), ord("-")):  # left arrow
         adjust_param(state, -0.1)
-    elif key == 83:  # right arrow
+    elif key in (83, 3, ord("l"), ord("+")):  # right arrow
         adjust_param(state, 0.1)
     elif key in (8, 127):  # backspace
-        state.mode = "EDIT"
+        state.mode = "TONE"
 
 
 def adjust_param(state: ControllerState, delta: float) -> None:

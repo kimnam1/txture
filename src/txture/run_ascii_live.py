@@ -20,6 +20,8 @@ from txture.control import (
     format_help_line,
 )
 
+from txture.config import DEFAULT_BRIGHTNESS_THRESHOLD
+
 
 BASE = Path(__file__).resolve().parents[2]
 METRIC_DIR = BASE / "data" / "metrics"
@@ -71,6 +73,12 @@ def main():
         default=True,
         help="Enable controller window",
     )
+    ap.add_argument(
+        "--threshold",
+        type=int,
+        default=None,
+        help='Brightness threshold for dot charset (only for "ascii_dots_only" set)',
+    )
     ap.add_argument("--aspect", type=float, default=2.0)
 
     args = ap.parse_args()
@@ -106,6 +114,11 @@ def main():
         ctrl_state.charset = current_set
         ctrl_state.outline = use_outline
         ctrl_state.color = use_color
+        ctrl_state.brightness_threshold = (
+            args.threshold
+            if args.threshold is not None
+            else DEFAULT_BRIGHTNESS_THRESHOLD
+        )
 
     sys.stdout.write("\x1b[?1049h\x1b[H\x1b[2J\x1b[?25l")
     sys.stdout.flush()
@@ -137,6 +150,11 @@ def main():
             )
             effective_color = ctrl_state.color if args.control else use_color
             sat_gain = ctrl_state.saturation_gain if args.control else 1
+            brightness_threshold = (
+                ctrl_state.brightness_threshold
+                if args.control
+                else DEFAULT_BRIGHTNESS_THRESHOLD
+            )
 
             features = process_frame(frame, outline_mode=effective_outline)
 
@@ -180,6 +198,8 @@ def main():
             if not args.control and key == 27:
                 break
 
+            edge_arg = features.edge_dir if effective_outline else None
+
             lines, colors = frame_to_ascii(
                 features.processed,
                 lut,
@@ -187,6 +207,8 @@ def main():
                 char_aspect=args.aspect,
                 colorize=effective_color,
                 saturation_gain=sat_gain,
+                brightness_threshold=brightness_threshold,
+                edge_dir=edge_arg,
             )
 
             max_ascii_rows = max(1, term_rows - 3)
