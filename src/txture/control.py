@@ -82,6 +82,8 @@ def handle_tone_key(state: ControllerState, key: int) -> None:
         state.mode = "SATURATION"
     elif key == ord("g"):
         state.mode = "GAMMA"
+    elif key == ord("v"):
+        state.mode = "VALUE"
     elif key == ord("b"):
         state.mode = "BRIGHTNESS"
     elif key in (8, 127):  # backspace
@@ -130,3 +132,33 @@ def format_info_line(state: ControllerState) -> str:
         f"saturation: {sat} | gamma: {gamma} | "
         f"brightness threshold: {bright_thresh}"
     )
+
+
+def make_conf_bar(
+    conf: float, length: int = 20, thresh: float = 0.8
+) -> tuple[str, int]:
+    p = max(0.0, min(1.0, conf))
+    filled = int(p * length)
+    bar = ["#"] * filled + ["."] * (length - filled)
+
+    if 0.0 < thresh < 1.0:
+        t_pos = int(thresh * length)
+        if 0 <= t_pos < length:
+            bar[t_pos] = "|"
+
+    return "".join(bar), int(p * 100)
+
+
+def format_conf_line(
+    title: str,
+    label: str | None,
+    conf: float,
+    length: int = 30,
+    thresh: float = 0.8,
+) -> str:
+    bar, pct = make_conf_bar(conf, length=length, thresh=thresh)
+    title_field = f"{title:<7}"
+    label_show = label if label else "-"
+    label_field = f"({label_show:^7})"
+
+    return f"{title_field} {label_field} : {bar} {pct:3d}%"

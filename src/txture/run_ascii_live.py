@@ -18,13 +18,23 @@ from txture.control import (
     format_mode_line,
     format_info_line,
     format_help_line,
+    format_conf_line,
 )
 
 from txture.config import DEFAULT_BRIGHTNESS_THRESHOLD
+from txture.gesture_events import GestureEventFilter
 
+from ml_models.detection.hand_detector import HandDetector
+from ml_models.gestures.inference import GestureRecognizer
+
+
+# from ml_models.detection.face_detector import FaceDetector
 
 BASE = Path(__file__).resolve().parents[2]
 METRIC_DIR = BASE / "data" / "metrics"
+
+ML_BASE = BASE / "src" / "ml_models"
+GESTURE_CKPT = ML_BASE / "gestures" / "checkpoints" / "gesture_model.pkl"
 
 
 def discover_metric_files():
@@ -93,6 +103,12 @@ def main():
         return
     lut = load_lut(files[current_set])
 
+    hand_detector = HandDetector(max_num_hands=1, detection_confidence=0.5)
+
+    gesture_recognizer = GestureRecognizer(model_path=str(GESTURE_CKPT))
+
+    gesture_filter = GestureEventFilter(min_conf=0.8, stable_frames=5)
+
     cap, cam_info = open_auto_camera(max_devices=5)
     print(
         f"using camera index={cam_info.index} backend={cam_info.backend} "
@@ -129,6 +145,24 @@ def main():
             if not ok:
                 time.sleep(0.1)
                 continue
+
+            hands = hand_detector.detect(frame)
+            gesture_label = None
+            gesture_conf = 0.0
+
+            if hands:
+                gesture_label, gesture_conf = gesture_recognizer.recognize(
+                    hands[0]
+                )
+
+            gesture_event = gesture_filter.update(gesture_label, gesture_conf)
+
+            if gesture_event is not None:
+                gkey = ord(gesture_event.lower())
+                if gkey is not None:
+                    handle_key(ctrl_state, gkey)
+                    if not ctrl_state.running:
+                        break
 
             terminal_size = shutil.get_terminal_size((80, 24))
             term_cols = terminal_size.columns
@@ -232,6 +266,22 @@ def main():
                 for line in lines:
                     sys.stdout.write(line + "\n")
 
+            gesture_line = format_conf_line(
+                title="GESTURE",
+                label=gesture_label,
+                conf=gesture_conf,
+                length=40,
+                thresh=0.5,
+            )
+
+            face_line = format_conf_line(
+                title="FACE",
+                label=None,
+                conf=0.0,
+                length=40,
+                thresh=0.7,
+            )
+
             mode_line = format_mode_line(ctrl_state) + format_help_line(
                 ctrl_state
             )
@@ -240,12 +290,14 @@ def main():
             term_cols = terminal_size.columns
 
             current_line = len(lines) + 1
-            while current_line < term_rows - 2:
+            while current_line < term_rows - 4:
                 sys.stdout.write("\n")
                 current_line += 1
 
             sys.stdout.write(mode_line.center(term_cols) + "\n")
             sys.stdout.write(info_line.center(term_cols) + "\n")
+            sys.stdout.write(gesture_line.center(term_cols) + "\n")
+            sys.stdout.write(face_line.center(term_cols) + "\n")
 
             sys.stdout.flush()
 

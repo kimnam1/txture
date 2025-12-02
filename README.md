@@ -55,3 +55,5 @@ Target ASCII frame rate.
 ## Exit
 
 Ctrl + C
+
+or focus on 'control' window and press 'ECS' (not focus on the terminal!)
