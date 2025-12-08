@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+from tqdm import tqdm
 from model import ExpressionModel
 
 
@@ -19,21 +20,23 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"facility: {device}")
     
-    # Data Preprocessing
+    # Data preprocessing
     train_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((260, 260)),
+        transforms.CenterCrop(224),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
     
     test_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((260, 260)),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
     
-    # Loading data
+    # Load data - directly using preprocessed data
     train_dataset = datasets.ImageFolder(os.path.join(args.dataset, 'train'), train_transform)
     test_dataset = datasets.ImageFolder(os.path.join(args.dataset, 'test'), test_transform)
     
@@ -44,7 +47,7 @@ def main():
     print(f"Classes: {classes}")
     print(f"Training samples: {len(train_dataset)}, Test samples: {len(test_dataset)}")
     
-    # Save Category Mapping
+    # Save class mapping
     label_map = {i: cls for i, cls in enumerate(classes)}
     
     # Model
@@ -57,7 +60,10 @@ def main():
     for epoch in range(args.epochs):
         model.train()
         train_loss = 0
-        for images, labels in train_loader:
+        
+        # Add progress bar
+        train_bar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{args.epochs}')
+        for images, labels in train_bar:
             images, labels = images.to(device), labels.to(device)
             
             optimizer.zero_grad()
@@ -67,10 +73,20 @@ def main():
             optimizer.step()
             
             train_loss += loss.item()
+            # Update progress bar with current loss
+            train_bar.set_postfix({'Loss': f'{loss.item():.4f}'})
         
-        # Verification
+        # Validation
         model.eval()
         correct, total = 0, 0
+        class_correct = {}
+        class_total = {}
+        
+        # Initialize stats for each class
+        for i, class_name in enumerate(classes):
+            class_correct[i] = 0
+            class_total[i] = 0
+        
         with torch.no_grad():
             for images, labels in test_loader:
                 images, labels = images.to(device), labels.to(device)
@@ -78,9 +94,24 @@ def main():
                 _, predicted = outputs.max(1)
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
+                
+                # Track per-class accuracy
+                for i in range(labels.size(0)):
+                    label = labels[i].item()
+                    class_total[label] += 1
+                    if predicted[i] == labels[i]:
+                        class_correct[label] += 1
         
         acc = correct / total
         print(f"Epoch {epoch+1}/{args.epochs} - Loss: {train_loss/len(train_loader):.4f} - Acc: {acc:.4f}")
+        
+        # Print per-class accuracy
+        print("Per-class accuracy:")
+        for i, class_name in enumerate(classes):
+            if class_total[i] > 0:
+                class_acc = class_correct[i] / class_total[i]
+                print(f"  {class_name}: {class_acc:.4f} ({class_correct[i]}/{class_total[i]})")
+        print()  # blank line
         
         if acc > best_acc:
             best_acc = acc

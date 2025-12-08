@@ -52,7 +52,7 @@ def main():
             if conf > 0.5:
                 gesture_text = f"{label} ({conf:.2f})"
         
-        #Display results
+        # Display results
         cv2.putText(frame, f"Expression: {expression_text}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         cv2.putText(frame, f"Gesture: {gesture_text}", (10, 60),
