@@ -43,15 +43,25 @@ def process_frame(frame, outline_mode: bool) -> FrameFeatures:
     face_mask = np.zeros((h, w), dtype=np.uint8)
     det_vis = orig.copy()
 
-    ## add hand detection visualization
+    # add hand detection visualization
 
     if outline_mode:
         blur = cv2.GaussianBlur(gray, BLUR_KERNEL_SIZE, 0)
         kernel = np.ones(MORPH_KERNEL_SIZE, dtype=np.uint8)
-        edges = cv2.Canny(blur, CANNY_LOW, CANNY_HIGH)
-        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
-        edges = cv2.dilate(edges, kernel, iterations=2)
 
+        # 1. edge
+        edges = cv2.Canny(blur, CANNY_LOW, CANNY_HIGH)
+
+        # 2. smooth edges
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+
+        # 2-1. make little thicker to show on screen
+        edges_render = cv2.dilate(edges, kernel, iterations=3)
+
+        # 3. skeletonize edges
+        edges_skel = cv2.ximgproc.thinning(edges)
+
+        # 4. compute edge direction
         gx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=SOBEL_KERNEL_SIZE)
         gy = cv2.Sobel(blur, cv2.CV_64F, 0, 1, ksize=SOBEL_KERNEL_SIZE)
 
@@ -61,7 +71,7 @@ def process_frame(frame, outline_mode: bool) -> FrameFeatures:
 
         bins = np.array([0.0, 45.0, 90.0, 135.0], dtype=np.float32)
 
-        mask = edges > 0
+        mask = edges_skel > 0
         if np.any(mask):
             ang_valid = angle[mask]
 
@@ -71,7 +81,7 @@ def process_frame(frame, outline_mode: bool) -> FrameFeatures:
 
             edge_dir[mask] = idx
 
-        processed = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        processed = cv2.cvtColor(edges_render, cv2.COLOR_GRAY2BGR)
     else:
         processed = orig.copy()
         edge_dir = np.full(gray.shape, -1, dtype=np.int8)

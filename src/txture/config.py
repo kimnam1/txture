@@ -3,7 +3,7 @@ CANNY_LOW = 30
 CANNY_HIGH = 100
 BLUR_KERNEL_SIZE = (5, 5)
 SOBEL_KERNEL_SIZE = 5
-MORPH_KERNEL_SIZE = (5, 5)
+MORPH_KERNEL_SIZE = (3, 3)
 
 
 # Controller
@@ -20,7 +20,7 @@ KEY_HELP_DICT = {
 
 
 # Default settings
-DEFAULT_FPS = 30
+DEFAULT_FPS = 3  # Textual rendering so slow..
 DEFAULT_OUTLINE = False
 DEFAULT_COLOR = False
 DEFAULT_OUTLINE = False
