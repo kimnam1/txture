@@ -81,7 +81,7 @@ Screen {
 
 /* Bottom status area */
 #status {
-    height: 3;
+    height: 5;
     border: heavy white;
 }
 """
@@ -249,6 +249,7 @@ Screen {
         outline_flag = "ON" if ctrl_state.outline else "OFF"
         color_flag = "ON" if ctrl_state.color else "OFF"
         top_line = f"MODE: {ctrl_state.mode} | outline: {outline_flag} | color: {color_flag} | Press 'h' for help | 'ctrl + q' to quit"
+        help_line = format_help_line(ctrl_state)
 
         gesture_line = format_conf_line(
             title="GESTURE",
@@ -258,7 +259,7 @@ Screen {
             thresh=0.8,
         )
 
-        return top_line + "\n" + gesture_line
+        return top_line + "\n" + gesture_line + "\n" + help_line
 
     def _calc_ascii_size(self) -> tuple[int, int]:
         screen_width = self.size.width
