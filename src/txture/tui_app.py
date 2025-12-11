@@ -4,7 +4,9 @@ from textual.events import Key
 from textual.containers import Container
 
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
+import numpy as np
+import cv2
 
 from txture.devices import open_auto_camera
 from txture.pipeline import process_frame
@@ -99,6 +101,9 @@ Screen {
         self.gesture_label = None
         self.gesture_conf = 0.0
 
+        self.face_detector = None
+        self.hand_detector = None
+
     def compose(self) -> ComposeResult:
         yield Container(
             Container(
@@ -132,11 +137,14 @@ Screen {
         self.cap, cam_info = open_auto_camera(max_devices=3)
 
         from ml_models.detection.hand_detector import HandDetector
+        from ml_models.detection.face_detector import FaceDetector
         from ml_models.gestures.inference import GestureRecognizer
         from txture.gesture_events import GestureEventFilter
 
         self.hand_detector = HandDetector(
             max_num_hands=1, detection_confidence=0.5
+        )
+        self.face_detector = FaceDetector(
         )
         self.gesture_recognizer = GestureRecognizer(
             model_path=str(GESTURE_CKPT)
@@ -176,6 +184,54 @@ Screen {
 
         if not ctrl_state.running:
             await self.action_quit()
+
+    def _get_face_crop(self, frame) -> Optional[np.ndarray]:
+        """Get cropped face region if detected"""
+        if self.face_detector is None:
+            return None
+        faces = self.face_detector.detect(frame)
+        if not faces:
+            return None
+        
+        x1, y1, x2, y2 = faces[0]
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
+        
+        face_crop = frame[y1:y2, x1:x2]
+        return face_crop if face_crop.size > 0 else None
+
+    def _get_hand_crop(self, frame) -> Optional[np.ndarray]:
+        """Get cropped hand region with keypoints drawn"""
+        if self.hand_detector is None:
+            return None
+        hands = self.hand_detector.detect(frame)
+        if not hands:
+            return None
+            
+        hand_points = hands[0]
+        
+        # Calculate bounding box
+        xs = [p[0] for p in hand_points]
+        ys = [p[1] for p in hand_points]
+        
+        padding = 30
+        h, w = frame.shape[:2]
+        x1 = max(0, int(min(xs)) - padding)
+        y1 = max(0, int(min(ys)) - padding)
+        x2 = min(w, int(max(xs)) + padding)
+        y2 = min(h, int(max(ys)) + padding)
+        
+        hand_crop = frame[y1:y2, x1:x2].copy()
+        if hand_crop.size == 0:
+            return None
+            
+        # Draw keypoints
+        for x, y, z, vis in hand_points:
+            rel_x, rel_y = int(x) - x1, int(y) - y1
+            if 0 <= rel_x < hand_crop.shape[1] and 0 <= rel_y < hand_crop.shape[0]:
+                cv2.circle(hand_crop, (rel_x, rel_y), 3, (255, 0, 0), -1)
+                
+        return hand_crop
 
     def _render_ascii(self, frame, cols: int, rows: int) -> Union[str, Text]:
         if self.lut is None:
@@ -286,13 +342,33 @@ Screen {
         else:
             ascii_renderable = "No camera connected."
 
+        if self.cap is not None and ok:
+            face_crop = self._get_face_crop(frame)
+
+            if face_crop is not None:
+                fw = self.face_view.size.width
+                fh = self.face_view.size.height
+                if fw > 4 and fh > 4:
+                    cols = fw -2
+                    rows = fh -2
+                    ascii_face= self._render_ascii(frame=face_crop, cols=cols, rows=rows)
+                    self.face_view.update(ascii_face)
+                
+            hand_crop = self._get_hand_crop(frame)  
+            if hand_crop is not None:
+                hw = self.hand_view.size.width
+                hh = self.hand_view.size.height
+                if hw >4 and hh >4:
+                    cols = hw - 2
+                    rows = self.hand_view.size.height - 2
+                    ascii_hand= self._render_ascii(frame=hand_crop, cols=cols, rows=rows)       
+                    self.hand_view.update(ascii_hand)
+                
+
         status_text = self._render_status()
 
         self.ascii_view.update(ascii_renderable)
         self.status_view.update(status_text)
-
-        self.face_view.update("FACE AREA (not implemented)")
-        self.hand_view.update("HAND AREA (not implemented)")
 
 
 if __name__ == "__main__":
