@@ -12,8 +12,8 @@ from txture.config import (
 @dataclass
 class ControllerState:
     charset: str = "ascii_punctuation_only"
-    outline: bool = True
-    color: bool = False
+    outline: bool = False
+    color: bool = True
     saturation_gain: float = 1.0
     running: bool = True
     brightness_threshold: int = 200

@@ -233,7 +233,7 @@ Screen {
                 
         return hand_crop
 
-    def _render_ascii(self, frame, cols: int, rows: int) -> Union[str, Text]:
+    def _render_ascii(self, frame, cols: int, rows: int, *, color: bool, outline: bool) -> Union[str, Text]:
         if self.lut is None:
             return "No LUT loaded."
 
@@ -261,17 +261,17 @@ Screen {
 
         features = process_frame(
             frame,
-            outline_mode=ctrl_state.outline,
+            outline_mode=outline,
         )
 
-        edge_arg = features.edge_dir if ctrl_state.outline else None
+        edge_arg = features.edge_dir if outline else None
 
         lines, colors = frame_to_ascii(
             features.processed,
             self.lut,
             cols=cols,
             char_aspect=2.0,
-            colorize=ctrl_state.color,
+            colorize=color,
             saturation_gain=self.sat_gain,
             brightness_threshold=self.brightness_threshold,
             edge_dir=edge_arg,
@@ -284,7 +284,7 @@ Screen {
         if colors is not None:
             colors = colors[:max_rows]
 
-        if not ctrl_state.color or colors is None:
+        if not color or colors is None:
             return "\n".join(lines)
 
         text = Text()
@@ -337,7 +337,7 @@ Screen {
                 cols, target_rows = self._calc_ascii_size()
 
                 ascii_renderable = self._render_ascii(
-                    frame=frame, cols=cols, rows=target_rows
+                    frame=frame, cols=cols, rows=target_rows, color=ctrl_state.color, outline=ctrl_state.outline
                 )
         else:
             ascii_renderable = "No camera connected."
@@ -351,7 +351,7 @@ Screen {
                 if fw > 4 and fh > 4:
                     cols = fw -2
                     rows = fh -2
-                    ascii_face= self._render_ascii(frame=face_crop, cols=cols, rows=rows)
+                    ascii_face= self._render_ascii(frame=face_crop, cols=cols, rows=rows, color=True, outline=False)
                     self.face_view.update(ascii_face)
                 
             hand_crop = self._get_hand_crop(frame)  
@@ -360,8 +360,8 @@ Screen {
                 hh = self.hand_view.size.height
                 if hw >4 and hh >4:
                     cols = hw - 2
-                    rows = self.hand_view.size.height - 2
-                    ascii_hand= self._render_ascii(frame=hand_crop, cols=cols, rows=rows)       
+                    rows = hh - 2
+                    ascii_hand= self._render_ascii(frame=hand_crop, cols=cols, rows=rows, color=True, outline=False)       
                     self.hand_view.update(ascii_hand)
                 
 
