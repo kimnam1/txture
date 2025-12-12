@@ -33,9 +33,9 @@ def main():
             # Crop faces and recognize expressions
             face_img = frame[y1:y2, x1:x2]
             if face_img.size > 0:
-                label, conf = expression_recognizer.recognize(face_img)
-                if conf > 0.5:
-                    expression_text = f"{label} ({conf:.2f})"
+                # 使用新的智能判断方法，阈值设为0.5
+                label, conf, all_probs = expression_recognizer.recognize_all_emotions(face_img, threshold=0.5)
+                expression_text = f"{label} ({conf:.2f})"
         
         # Gesture Detection and Recognition
         hands = hand_detector.detect(frame)
