@@ -4,7 +4,7 @@ import timm
 
 
 class ExpressionModel(nn.Module):
-    def __init__(self, num_classes=7):
+    def __init__(self, num_classes=5):
         super().__init__()
         self.model = timm.create_model('efficientnet_b2', pretrained=True, num_classes=num_classes)
     
