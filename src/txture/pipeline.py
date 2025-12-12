@@ -37,8 +37,6 @@ def process_frame(frame, outline_mode: bool) -> FrameFeatures:
 
     h, w = gray.shape
 
-    hands = _hand_detector.detect(orig)
-    faces = _face_detector.detect(orig)
     hand_mask = np.zeros((h, w), dtype=np.uint8)
     face_mask = np.zeros((h, w), dtype=np.uint8)
     det_vis = orig.copy()

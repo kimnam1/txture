@@ -16,7 +16,12 @@ def frame_to_ascii(
     saturation_gain: float = 1.0,
     brightness_threshold: int = DEFAULT_BRIGHTNESS_THRESHOLD,
     edge_dir=None,
+    mirror: bool = True,
 ) -> list[str]:
+    if mirror:
+        frame_bgr = cv2.flip(frame_bgr, 1)
+        if edge_dir is not None:
+            edge_dir = cv2.flip(edge_dir, 1)
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
     rows = max(1, int(cols * h / w / char_aspect))
