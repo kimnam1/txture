@@ -21,7 +21,6 @@ from txture.control import (
 )
 from rich.text import Text
 
-
 BASE = Path(__file__).resolve().parents[2]
 METRIC_DIR = BASE / "data" / "metrics"
 
@@ -95,6 +94,8 @@ Screen {
         self.brightness_threshold = DEFAULT_BRIGHTNESS_THRESHOLD
 
         self.face_detector = None
+        self.expression_recognizer = None
+        self.face_filter = None
         self.face_label = None
         self.face_conf = 0.0
 
@@ -146,17 +147,18 @@ Screen {
             max_num_hands=1, detection_confidence=0.5
         )
         self.face_detector = FaceDetector()
+
         self.gesture_recognizer = GestureRecognizer(
             model_path=str(GESTURE_CKPT)
         )
         self.gesture_filter = EventFilter(min_conf=0.8, stable_frames=5)
 
-        # self.expression_recognizer = ExpressionRecognizer(
-        #     model_path=str(FACE_CKPT)
-        # )
+        self.expression_recognizer = ExpressionRecognizer(
+            model_path=str(FACE_CKPT)
+        )
         self.face_filter = EventFilter(min_conf=0.8, stable_frames=5)
-        self.face_label = "FACE"
-        self.face_conf = 1.0
+        self.face_label = None
+        self.face_conf = 0.0
 
         self.tick_timer = self.set_interval(1 / DEFAULT_FPS, self._on_tick)
 
@@ -198,7 +200,8 @@ Screen {
             self.face_label = None
             self.face_conf = 0.0
 
-            self.face_filter.update(None, 0.0)
+            if self.face_filter is not None:
+                self.face_filter.update(None, 0.0)
             return None
 
         faces = self.face_detector.detect(frame)
@@ -206,7 +209,8 @@ Screen {
             self.face_label = None
             self.face_conf = 0.0
 
-            self.face_filter.update(None, 0.0)
+            if self.face_filter is not None:
+                self.face_filter.update(None, 0.0)
             return None
 
         x1, y1, x2, y2 = faces[0]
@@ -217,24 +221,28 @@ Screen {
         if face_crop.size == 0:
             self.face_label = None
             self.face_conf = 0.0
-
-            self.face_filter.update(None, 0.0)
+            if self.face_filter is not None:
+                self.face_filter.update(None, 0.0)
             return None
         label = None
         conf = 0.0
 
-        if (
-            hasattr(self, "expression_recognizer")
-            and self.expression_recognizer is not None
-        ):
+        if self.expression_recognizer is not None:
             try:
-                label, conf = self.expression_recognizer.recognize(face_crop)
+                # Use intelligent judgment method with threshold set to 0.3
+                label, conf, _ = (
+                    self.expression_recognizer.recognize_all_emotions(
+                        face_crop, threshold=0.3
+                    )
+                )
             except Exception:
                 label, conf = None, 0.0
 
         self.face_label = label
         self.face_conf = conf
-        fired = self.face_filter.update(label, conf)
+        fired = None
+        if self.face_filter is not None:
+            fired = self.face_filter.update(label, conf)
 
         if fired is not None:
             self._on_face_event(fired, conf)
