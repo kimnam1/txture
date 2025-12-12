@@ -29,6 +29,7 @@ METRIC_DIR = BASE / "data" / "metrics"
 
 ML_BASE = BASE / "src" / "ml_models"
 GESTURE_CKPT = ML_BASE / "gestures" / "checkpoints" / "gesture_model.pkl"
+FACE_CKPT = ML_BASE / "expressions" / "checkpoints" / "expression_model.pkl"
 
 
 def discover_metric_files():
@@ -95,14 +96,15 @@ Screen {
         self.sat_gain = 1.0
         self.brightness_threshold = DEFAULT_BRIGHTNESS_THRESHOLD
 
+        self.face_detector = None
+        self.face_label = None
+        self.face_conf = 0.0
+
         self.hand_detector = None
         self.gesture_recognizer = None
         self.gesture_filter = None
         self.gesture_label = None
         self.gesture_conf = 0.0
-
-        self.face_detector = None
-        self.hand_detector = None
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -139,7 +141,8 @@ Screen {
         from ml_models.detection.hand_detector import HandDetector
         from ml_models.detection.face_detector import FaceDetector
         from ml_models.gestures.inference import GestureRecognizer
-        from txture.gesture_events import GestureEventFilter
+        from ml_models.expressions.inference import ExpressionRecognizer
+        from txture.detection_event import EventFilter
 
         self.hand_detector = HandDetector(
             max_num_hands=1, detection_confidence=0.5
@@ -149,7 +152,8 @@ Screen {
         self.gesture_recognizer = GestureRecognizer(
             model_path=str(GESTURE_CKPT)
         )
-        self.gesture_filter = GestureEventFilter(min_conf=0.8, stable_frames=5)
+        self.gesture_filter = EventFilter(min_conf=0.8, stable_frames=5)
+        self.face_filter = EventFilter(min_conf=0.8, stable_frames=5)
 
         self.tick_timer = self.set_interval(1 / DEFAULT_FPS, self._on_tick)
 
@@ -188,9 +192,18 @@ Screen {
     def _get_face_crop(self, frame) -> Optional[np.ndarray]:
         """Get cropped face region if detected"""
         if self.face_detector is None:
+            self.face_label = None
+            self.face_conf = 0.0
+
+            self.face_filter.update(None, 0.0)
             return None
+        
         faces = self.face_detector.detect(frame)
         if not faces:
+            self.face_label = None
+            self.face_conf = 0.0
+
+            self.face_filter.update(None, 0.0)
             return None
         
         x1, y1, x2, y2 = faces[0]
@@ -198,7 +211,26 @@ Screen {
         x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
         
         face_crop = frame[y1:y2, x1:x2]
+        if face_crop.size == 0:
+            self.face_label = None
+            self.face_conf = 0.0
+
+            self.face_filter.update(None, 0.0)
+            return None
+        
+        conf = 1.0
+        fired = self.face_filter.update("face", conf)
+
+        if fired is not None:
+            self._on_face_event(fired, conf)
+        else:
+            self.face_label = "face"
+            self.face_conf = conf
         return face_crop if face_crop.size > 0 else None
+    
+    def _on_face_event(self, label: str, conf: float) -> None:
+        self.face_label = label
+        self.face_conf = conf
 
     def _get_hand_crop(self, frame) -> Optional[np.ndarray]:
         """Get cropped hand region with keypoints drawn"""
@@ -232,6 +264,47 @@ Screen {
                 cv2.circle(hand_crop, (rel_x, rel_y), 3, (255, 0, 0), -1)
                 
         return hand_crop
+    
+    def _render_ascii_raw(self, frame, cols:int , rows: int , *, color, outline) : 
+        if self.lut is None:
+            return "No LUT loaded."
+        
+        features = process_frame(
+            frame,
+            outline_mode=outline,
+        )
+
+        edge_arg  = features.edge_dir if outline else None
+
+        lines, colors = frame_to_ascii(
+            features.processed,
+            self.lut,
+            cols=cols,
+            char_aspect=2.0,
+            colorize=color,
+            saturation_gain=self.sat_gain,
+            brightness_threshold=self.brightness_threshold,
+            edge_dir=edge_arg,
+        )
+
+        max_rows = max(1, rows)
+
+        lines = lines[:max_rows]
+
+        if colors is not None:
+            colors = colors[:max_rows]
+
+        if not color or colors is None:
+            return "\n".join(lines)
+
+        text = Text()
+        for y, line in enumerate(lines):
+            for x, ch in enumerate(line):
+                r, g, b = colors[y][x]
+                text.append(ch, style=f"rgb({r},{g},{b})")
+            text.append("\n")
+
+        return text
 
     def _render_ascii(self, frame, cols: int, rows: int, *, color: bool, outline: bool) -> Union[str, Text]:
         if self.lut is None:
@@ -304,18 +377,11 @@ Screen {
     def _render_status(self) -> str:
         outline_flag = "ON" if ctrl_state.outline else "OFF"
         color_flag = "ON" if ctrl_state.color else "OFF"
-        top_line = f"MODE: {ctrl_state.mode} | outline: {outline_flag} | color: {color_flag} | Press 'h' for help | 'ctrl + q' to quit"
+        top_line = f"MODE: {ctrl_state.mode} | outline: {outline_flag} | color: {color_flag}"
+        general_help_line = "(h) -> HELP | (esc) -> QUIT"
         help_line = format_help_line(ctrl_state)
 
-        gesture_line = format_conf_line(
-            title="GESTURE",
-            label=self.gesture_label,
-            conf=self.gesture_conf,
-            length=40,
-            thresh=0.8,
-        )
-
-        return top_line + "\n" + gesture_line + "\n" + help_line
+        return top_line + "\n" + general_help_line + "\n" + help_line
 
     def _calc_ascii_size(self) -> tuple[int, int]:
         screen_width = self.size.width
@@ -351,8 +417,19 @@ Screen {
                 if fw > 4 and fh > 4:
                     cols = fw -2
                     rows = fh -2
-                    ascii_face= self._render_ascii(frame=face_crop, cols=cols, rows=rows, color=True, outline=False)
-                    self.face_view.update(ascii_face)
+                    ascii_face= self._render_ascii_raw(frame=face_crop, cols=cols, rows=rows, color=True, outline=False)
+
+                    max_chars = max(10, cols)
+                    bar_len = max(5, max_chars - 20)
+                    
+                    face_status = format_conf_line(
+                        title="FACE",
+                        label=self.face_label,
+                        conf=self.face_conf,
+                        length=cols,
+                        thresh=0.7,
+                    )
+                    self.face_view.update(ascii_face + "\n" + face_status)
                 
             hand_crop = self._get_hand_crop(frame)  
             if hand_crop is not None:
@@ -361,8 +438,19 @@ Screen {
                 if hw >4 and hh >4:
                     cols = hw - 2
                     rows = hh - 2
-                    ascii_hand= self._render_ascii(frame=hand_crop, cols=cols, rows=rows, color=True, outline=False)       
-                    self.hand_view.update(ascii_hand)
+                    ascii_hand= self._render_ascii_raw(frame=hand_crop, cols=cols, rows=rows, color=True, outline=False)   
+
+                    max_chars = max(10, cols)
+                    bar_len = max(5, max_chars - 20)
+
+                    gesture_status= format_conf_line(
+                        title="GESTURE",
+                        label=self.gesture_label,
+                        conf=self.gesture_conf,
+                        length=bar_len,
+                        thresh=0.5,
+                    )  
+                    self.hand_view.update(ascii_hand + "\n" + gesture_status)
                 
 
         status_text = self._render_status()
@@ -370,7 +458,9 @@ Screen {
         self.ascii_view.update(ascii_renderable)
         self.status_view.update(status_text)
 
-
-if __name__ == "__main__":
+def main():
     app = TxtureApp()
     app.run()
+
+if __name__ == "__main__":
+    main()

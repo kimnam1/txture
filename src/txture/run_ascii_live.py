@@ -22,7 +22,7 @@ from txture.control import (
 )
 
 from txture.config import DEFAULT_BRIGHTNESS_THRESHOLD
-from txture.gesture_events import GestureEventFilter
+from src.txture.detection_event import GestureEventFilter
 
 from ml_models.detection.hand_detector import HandDetector
 from ml_models.gestures.inference import GestureRecognizer

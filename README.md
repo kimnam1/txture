@@ -7,7 +7,7 @@ uv venv
 ```
 
 ```bash
-source .venv/bin/activate
+uv sync
 ```
 
 ```bash
@@ -17,7 +17,7 @@ uv pip install -e .
 ## Live ASCII Webcam
 
 ```bash
-uv run txture-live
+uv run txture
 ```
 
 ### Options
