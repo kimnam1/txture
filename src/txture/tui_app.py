@@ -217,7 +217,9 @@ Screen {
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
 
-        face_crop = frame[y1:y2, x1:x2]
+        face_crop = self._crop_square_with_padding(
+            frame, x1, y1, x2, y2, pad_ratio=0.2
+        )
         if face_crop.size == 0:
             self.face_label = None
             self.face_conf = 0.0
@@ -251,6 +253,84 @@ Screen {
     def _on_face_event(self, label: str, conf: float) -> None:
         pass
 
+    def _crop_square_with_padding(
+        self,
+        frame: np.ndarray,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        *,
+        pad_ratio: float = 0.2,
+    ) -> np.ndarray:
+        h, w = frame.shape[:2]
+
+        box_w = max(1, x2 - x1)
+        box_h = max(1, y2 - y1)
+
+        side = int(max(box_w, box_h) * (1 + 2 * pad_ratio))
+
+        center_x = (x1 + x2) // 2
+        center_y = (y1 + y2) // 2
+
+        sx1 = center_x - side // 2
+        sy1 = center_y - side // 2
+        sx2 = sx1 + side
+        sy2 = sy1 + side
+
+        ix1 = max(0, sx1)
+        iy1 = max(0, sy1)
+        ix2 = min(w, sx2)
+        iy2 = min(h, sy2)
+
+        crop = frame[iy1:iy2, ix1:ix2]
+        if crop.size == 0:
+            return np.zeros((side, side, 3), dtype=frame.dtype)
+
+        top = max(0, -sy1)
+        left = max(0, -sx1)
+        bottom = max(0, sy2 - h)
+        right = max(0, sx2 - w)
+
+        if top or bottom or left or right:
+            crop = cv2.copyMakeBorder(
+                crop,
+                top,
+                bottom,
+                left,
+                right,
+                borderType=cv2.BORDER_CONSTANT,
+                value=[0, 0, 0],
+            )
+
+        return crop
+
+    def _letterbox_to(
+        self, img: np.ndarray, target_w: int, target_h: int
+    ) -> np.ndarray:
+        if target_w <= 0 or target_h <= 0:
+            return img
+
+        h, w = img.shape[:2]
+
+        if h <= 0 or w <= 0:
+            return np.zeros((target_h, target_w, 3), dtype=img.dtype)
+
+        scale = min(target_w / w, target_h / h)
+        new_w = max(1, int(w * scale))
+        new_h = max(1, int(h * scale))
+
+        resized = cv2.resize(
+            img, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+        )
+
+        out = np.zeros((target_h, target_w, 3), dtype=img.dtype)
+
+        x0 = (target_w - new_w) // 2
+        y0 = (target_h - new_h) // 2
+        out[y0 : y0 + new_h, x0 : x0 + new_w] = resized
+        return out
+
     def _get_hand_crop(self, frame) -> Optional[np.ndarray]:
         """Get cropped hand region with keypoints drawn"""
         if self.hand_detector is None:
@@ -272,7 +352,10 @@ Screen {
         x2 = min(w, int(max(xs)) + padding)
         y2 = min(h, int(max(ys)) + padding)
 
-        hand_crop = frame[y1:y2, x1:x2].copy()
+        hand_crop = self._crop_square_with_padding(
+            frame, x1, y1, x2, y2, pad_ratio=0.2
+        ).copy()
+
         if hand_crop.size == 0:
             return None
 
@@ -446,9 +529,14 @@ Screen {
                 fh = self.face_view.size.height
                 if fw > 4 and fh > 4:
                     cols = fw - 2
-                    rows = fh - 2
+                    rows = max(1, fh - 3)
+
+                    stable_face = self._letterbox_to(
+                        face_crop, target_w=320, target_h=320
+                    )
+
                     ascii_face = self._render_ascii_raw(
-                        frame=face_crop,
+                        frame=stable_face,
                         cols=cols,
                         rows=rows,
                         color=True,
@@ -473,9 +561,14 @@ Screen {
                 hh = self.hand_view.size.height
                 if hw > 4 and hh > 4:
                     cols = hw - 2
-                    rows = hh - 2
+                    rows = max(1, hh - 3)
+
+                    stable_hand = self._letterbox_to(
+                        hand_crop, target_w=320, target_h=320
+                    )
+
                     ascii_hand = self._render_ascii_raw(
-                        frame=hand_crop,
+                        frame=stable_hand,
                         cols=cols,
                         rows=rows,
                         color=True,
