@@ -12,8 +12,8 @@ from txture.config import (
 @dataclass
 class ControllerState:
     charset: str = "ascii_punctuation_only"
-    outline: bool = True
-    color: bool = False
+    outline: bool = False
+    color: bool = True
     saturation_gain: float = 1.0
     running: bool = True
     brightness_threshold: int = 200
@@ -157,8 +157,13 @@ def format_conf_line(
     thresh: float = 0.8,
 ) -> str:
     bar, pct = make_conf_bar(conf, length=length, thresh=thresh)
-    title_field = f"{title:<7}"
-    label_show = label if label else "-"
-    label_field = f"({label_show:^7})"
 
-    return f"{title_field} {label_field} : {bar} {pct:3d}%"
+    title_show = title if title else "-"
+    label_show = label if label else "-"
+
+    first_line = f"{title_show}: {label_show}"
+
+    pct_field = f"{pct:3d}%"
+    second_line = f"( {pct_field:5s} ) {bar}"
+
+    return first_line + "\n" + second_line

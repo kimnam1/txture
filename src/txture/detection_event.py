@@ -1,4 +1,4 @@
-class GestureEventFilter:
+class EventFilter:
     def __init__(self, min_conf=0.8, stable_frames=5):
         self.min_conf = min_conf
         self.stable_frames = stable_frames
