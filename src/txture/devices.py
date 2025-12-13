@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 
 
 import cv2
@@ -69,13 +69,16 @@ def probe_device(
 
 def auto_scan_devices(
     max_devices: int = 5,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> Tuple[str, List[str], List[CameraInfo]]:
-    spinner = Spinner(message="Scanning OS...")
+    spinner = Spinner(message="Scanning OS...", callback=progress_callback)
     spinner.start()
     os_name = detect_os()
     spinner.stop()
     backends = backend_candidates(os_name)
-    spinner = Spinner(message="Scanning camera devices...")
+    spinner = Spinner(
+        message="Scanning camera devices...", callback=progress_callback
+    )
     spinner.start()
 
     found: List[CameraInfo] = []
@@ -89,8 +92,13 @@ def auto_scan_devices(
     return os_name, backends, found
 
 
-def auto_pick_camera(max_devices: int = 5) -> Optional[CameraInfo]:
-    os_name, backends, devices = auto_scan_devices(max_devices=max_devices)
+def auto_pick_camera(
+    max_devices: int = 5,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> Optional[CameraInfo]:
+    os_name, backends, devices = auto_scan_devices(
+        max_devices=max_devices, progress_callback=progress_callback
+    )
     if not devices:
         return None
     return devices[0]  # pick the first detected camera
@@ -98,8 +106,11 @@ def auto_pick_camera(max_devices: int = 5) -> Optional[CameraInfo]:
 
 def open_auto_camera(
     max_devices: int = 5,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> Tuple[cv2.VideoCapture, CameraInfo]:
-    info = auto_pick_camera(max_devices=max_devices)
+    info = auto_pick_camera(
+        max_devices=max_devices, progress_callback=progress_callback
+    )
     if info is None:
         raise RuntimeError("No camera device found")
     cap = open_with_backend(info.index, info.backend)

@@ -6,14 +6,16 @@ from txture.config import (
     CONTROLLER_WINDOW_SIZE,
     CONTROLLER_WINDOW_POS,
     KEY_HELP_DICT,
+    DEFAULT_OUTLINE,
+    DEFAULT_COLOR,
 )
 
 
 @dataclass
 class ControllerState:
     charset: str = "ascii_punctuation_only"
-    outline: bool = True
-    color: bool = True
+    outline: bool = DEFAULT_OUTLINE
+    color: bool = DEFAULT_COLOR
     saturation_gain: float = 1.0
     running: bool = True
     brightness_threshold: int = 200

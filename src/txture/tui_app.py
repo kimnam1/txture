@@ -8,6 +8,9 @@ from typing import Union, Optional
 import numpy as np
 import cv2
 
+from dataclasses import replace
+
+
 from txture.devices import open_auto_camera
 from txture.pipeline import process_frame
 from txture.loaders import load_lut
@@ -154,7 +157,9 @@ Screen {
 
         self.lut = load_lut(files[metric_key])
 
-        self.cap, cam_info = open_auto_camera(max_devices=3)
+        self.cap, cam_info = open_auto_camera(
+            max_devices=3,
+        )
 
         from ml_models.detection.hand_detector import HandDetector
         from ml_models.detection.face_detector import FaceDetector
@@ -506,9 +511,9 @@ Screen {
             frame,
         )
 
-        ctx = _build_ctx(self)
-        processed = self.effects.apply_frame(features.processed, ctx)
+        ctx = replace(_build_ctx(self), outline=outline)
 
+        processed = self.effects.apply_frame(features.processed, ctx)
         edge_arg = None
 
         lines, colors = frame_to_ascii(
@@ -584,7 +589,8 @@ Screen {
             frame,
         )
 
-        ctx = _build_ctx(self)
+        ctx = replace(_build_ctx(self), outline=outline)
+
         processed = self.effects.apply_frame(features.processed, ctx)
 
         edge_arg = None
@@ -673,6 +679,7 @@ Screen {
                     color=ctrl_state.color,
                     outline=ctrl_state.outline,
                 )
+            frame = cv2.flip(frame, 1)
         else:
             ascii_renderable = "No camera connected."
 
@@ -694,8 +701,8 @@ Screen {
                         frame=stable_face,
                         cols=cols,
                         rows=rows,
-                        color=True,
-                        outline=False,
+                        color=False,
+                        outline=True,
                     )
 
                     max_chars = max(10, cols)
@@ -726,8 +733,8 @@ Screen {
                         frame=stable_hand,
                         cols=cols,
                         rows=rows,
-                        color=True,
-                        outline=False,
+                        color=False,
+                        outline=True,
                     )
 
                     max_chars = max(10, cols)
