@@ -22,6 +22,8 @@ from txture.ascii_render import frame_to_ascii
 from txture.config import (
     DEFAULT_BRIGHTNESS_THRESHOLD,
     DEFAULT_FPS,
+    DEFAULT_GESTURE_CONFIDENCE,
+    DEFAULT_FACE_CONFIDENCE,
     KEY_COOLDOWN_S,
 )
 from txture.control import (
@@ -76,20 +78,31 @@ Screen {
     layout: vertical;
 }
 
-/* Main area: left(ASCII) + right(face + hand) */
+/* Main area: left(ASCII + status) + right(face + hand) */
 #main_area {
-    layout:horizontal;
+    layout: horizontal;
     height: 1fr;
 }
 
-/* ASCII area */
-#ascii {
+/* Left area: ASCII + status*/
+#left-plane {
+    layout: vertical;
     width: 3fr;
-    border: heavy green;
+}
+
+#ascii {
+    width: 1fr;
+    height: 1fr;
+    border: #6BA0E3;
+}
+
+#status{
+    height: 6;
+    border: #CDF233;
 }
 
 /* right vertical stack (face, hand) */
-#side-pane {
+#right-plane {
     layout: vertical;
     width: 1fr;
 }
@@ -97,20 +110,21 @@ Screen {
 /* Upper face area */
 #face {
     height: 1fr;
-    border: heavy blue;
+    border: #4533F2;
 }
 
 /* Lower hand area */
-#hand{
+#hand {
     height: 1fr;
-    border: heavy yellow;
+    border: #F2D633;
 }
 
-/* Bottom status area */
-#status {
-    height: 5;
-    border: heavy white;
+/* Bottom help area */
+#help {
+    height: 4;
+    border: none;
 }
+
 """
 
     def __init__(self, **kwargs):
@@ -148,23 +162,28 @@ Screen {
     def compose(self) -> ComposeResult:
         yield Container(
             Container(
-                Static("ASCII AREA", id="ascii", markup=False),
+                Container(
+                    Static("ASCII AREA", id="ascii", markup=False),
+                    Static("STATUS AREA", id="status", markup=False),
+                    id="left-plane",
+                ),
                 Container(
                     Static("FACE AREA", id="face", markup=False),
                     Static("HAND AREA", id="hand", markup=False),
-                    id="side-pane",
+                    id="right-plane",
                 ),
                 id="main_area",
             ),
-            Static("STATS / HELP", id="status", markup=False),
+            Static("HELP", id="help", markup=False),
             id="root",
         )
 
     async def on_mount(self) -> None:
         self.ascii_view: Static = self.query_one("#ascii", Static)
+        self.status_view: Static = self.query_one("#status", Static)
         self.face_view: Static = self.query_one("#face", Static)
         self.hand_view: Static = self.query_one("#hand", Static)
-        self.status_view: Static = self.query_one("#status", Static)
+        self.help_view: Static = self.query_one("#help", Static)
 
         self._metric_files = discover_metric_files()
         metric_key = getattr(ctrl_state, "charset", "ascii_punctuation_only")
@@ -194,12 +213,16 @@ Screen {
         self.gesture_recognizer = GestureRecognizer(
             model_path=str(GESTURE_CKPT)
         )
-        self.gesture_filter = EventFilter(min_conf=0.8, stable_frames=5)
+        self.gesture_filter = EventFilter(
+            min_conf=DEFAULT_GESTURE_CONFIDENCE, stable_frames=5
+        )
 
         self.expression_recognizer = ExpressionRecognizer(
             model_path=str(FACE_CKPT)
         )
-        self.face_filter = EventFilter(min_conf=0.8, stable_frames=5)
+        self.face_filter = EventFilter(
+            min_conf=DEFAULT_FACE_CONFIDENCE, stable_frames=5
+        )
         self.face_label = None
         self.face_conf = 0.0
 
@@ -675,14 +698,40 @@ Screen {
     def add_effect(self, layer: EffectLayer) -> None:
         self.effects.add_layer(layer)
 
-    def _render_status(self) -> str:
-        outline_flag = "ON" if ctrl_state.outline else "OFF"
-        color_flag = "ON" if ctrl_state.color else "OFF"
-        top_line = f"MODE: {ctrl_state.mode} | outline: {outline_flag} | color: {color_flag}"
-        general_help_line = "(h) -> HELP | (esc) -> QUIT"
+    def _render_help(self) -> str:
+        general_help_line = "[y] YANK(copy) | [esc] QUIT"
         help_line = format_help_line(ctrl_state)
 
-        return top_line + "\n" + general_help_line + "\n" + help_line
+        return general_help_line + "\n" + help_line
+
+    def _render_mode_line(self) -> str:
+        outline_flag = "ON" if ctrl_state.outline else "OFF"
+        color_flag = (
+            "-" if ctrl_state.outline else "ON" if ctrl_state.color else "OFF"
+        )
+        charset_key = getattr(ctrl_state, "charset", "ascii_punctuation_only")
+        charset_label_map = {
+            "ascii_letters_only": "LETTERS",
+            "ascii_punctuation_only": "PUNCTUATION",
+            "ascii_dots_only": "DOTS",
+            "ascii_digits_only": "DIGITS",
+            "ascii_all": "ALL",
+        }
+        charset_label = charset_label_map.get(charset_key, charset_key)
+
+        return f"MODE: {ctrl_state.mode}\nOUTLINE: {outline_flag}\nCOLOR: {color_flag}\nCHARACTER: {charset_label}"
+
+    def _append_line_to_ascii(
+        self, ascii_renderable: Union[str, Text], line: str
+    ) -> Union[str, Text]:
+        if isinstance(ascii_renderable, Text):
+            out = ascii_renderable.copy()
+
+            out.append("\n")
+            out.append(line)
+
+            return out
+        return (ascii_renderable or "") + "\n" + line
 
     def _calc_ascii_size(self) -> tuple[int, int]:
         screen_width = self.size.width
@@ -718,6 +767,8 @@ Screen {
                 ascii_renderable = "Failed to read from camera."
             else:
                 cols, target_rows = self._calc_ascii_size()
+
+                target_rows = max(3, target_rows - 1)
 
                 self._ensure_lut_for_charset()
 
@@ -813,10 +864,12 @@ Screen {
 
         self._last_ascii_text = self._to_plain_text(ascii_renderable)
 
-        status_text = self._render_status()
+        mode_text = self._render_mode_line()
+        help_text = self._render_help()
 
         self.ascii_view.update(ascii_renderable)
-        self.status_view.update(status_text)
+        self.status_view.update(mode_text)
+        self.help_view.update(help_text)
         self._handle_copy_request()
 
     def _to_plain_text(self, renderable: Union[str, Text, None]) -> str:
