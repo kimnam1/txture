@@ -7,10 +7,13 @@ from pathlib import Path
 from typing import Union, Optional
 import numpy as np
 import cv2
+import subprocess
+import platform
 
 from dataclasses import replace
 
 import time
+from datetime import datetime
 
 from txture.devices import open_auto_camera
 from txture.pipeline import process_frame
@@ -134,6 +137,10 @@ Screen {
 
         self.effects = EffectStack()
         self.debug_effect = False
+
+        self._last_ascii_text: str = ""
+        self._last_face_text: str = ""
+        self._last_hand_text: str = ""
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -278,11 +285,6 @@ Screen {
             await self.action_quit()
             return
 
-        if event.key.lower() == "z":
-            self.debug_effect_enabled = not getattr(
-                self, "debug_effect_enabled", False
-            )
-            return
         # key code mapping
         keycode: int | None = None
 
@@ -741,6 +743,10 @@ Screen {
                     )
                     self.face_view.update(ascii_face + "\n" + face_status)
 
+                    self._last_face_text = (
+                        self._to_plain_text(ascii_face) + "\n" + face_status
+                    )
+
             hand_crop = self._get_hand_crop(frame)
             if hand_crop is not None:
                 hw = self.hand_view.size.width
@@ -773,14 +779,179 @@ Screen {
                     )
                     self.hand_view.update(ascii_hand + "\n" + gesture_status)
 
+                    self._last_hand_text = (
+                        self._to_plain_text(ascii_hand) + "\n" + gesture_status
+                    )
+
         if getattr(self, "_gesture_fired", None) is not None:
             self._apply_gesture(getattr(self, "_gesture_fired"))
             self._gesture_fired = None
+
+        self._last_ascii_text = self._to_plain_text(ascii_renderable)
 
         status_text = self._render_status()
 
         self.ascii_view.update(ascii_renderable)
         self.status_view.update(status_text)
+        self._handle_copy_request()
+
+    def _to_plain_text(self, renderable: Union[str, Text, None]) -> str:
+        if renderable is None:
+            return ""
+        if isinstance(renderable, str):
+            return renderable
+        elif isinstance(renderable, Text):
+            return renderable.plain
+        else:
+            return str(renderable)
+
+    def _downloads_dir(self) -> Path:
+        # Default user Downloads folder
+        return Path.home() / "Downloads"
+
+    def _yank_stamp(self) -> str:
+        # YYYYMMDD_HHMMSS
+        return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    def _save_text_file(self, text: str, out_path: Path) -> bool:
+        try:
+            out_path.write_text(text or "", encoding="utf-8")
+            return True
+        except Exception:
+            return False
+
+    def _save_png_from_text(self, text: str, out_path: Path) -> bool:
+        """Render plain text into a PNG file.
+
+        Prefers Pillow for proper monospace layout. If Pillow is unavailable,
+        returns False.
+        """
+        try:
+            from PIL import Image, ImageDraw, ImageFont  # type: ignore
+        except Exception:
+            return False
+
+        lines = (text or "").splitlines() or [""]
+        max_cols = max((len(line) for line in lines), default=0)
+
+        # Try to load a common monospace font. Fall back to Pillow default.
+        font = None
+        font_size = 14
+        for fp in [
+            "/System/Library/Fonts/Menlo.ttc",
+            "/Library/Fonts/Menlo.ttc",
+            "/System/Library/Fonts/Monaco.ttf",
+        ]:
+            try:
+                font = ImageFont.truetype(fp, font_size)
+                break
+            except Exception:
+                font = None
+
+        if font is None:
+            try:
+                font = ImageFont.load_default()
+            except Exception:
+                return False
+
+        # Measure using a representative glyph.
+        try:
+            bbox = font.getbbox("M")
+            char_w = max(1, bbox[2] - bbox[0])
+            line_h = max(1, bbox[3] - bbox[1])
+        except Exception:
+            # Conservative fallback
+            char_w = 8
+            line_h = 16
+
+        padding = 12
+        img_w = max(1, padding * 2 + max_cols * char_w)
+        img_h = max(1, padding * 2 + len(lines) * line_h)
+
+        img = Image.new("RGB", (img_w, img_h), (0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        y = padding
+        for line in lines:
+            draw.text((padding, y), line, font=font, fill=(255, 255, 255))
+            y += line_h
+
+        try:
+            img.save(out_path, format="PNG")
+            return True
+        except Exception:
+            return False
+
+    def _save_yanked_files(self, text: str) -> tuple[Path | None, Path | None]:
+        """Save yanked content into ~/Downloads as both .txt and .png.
+
+        Returns (txt_path, png_path). Either can be None if saving fails.
+        """
+        stamp = self._yank_stamp()
+        base = f"yanked_{stamp}"
+
+        downloads = self._downloads_dir()
+        try:
+            downloads.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            # If Downloads is not writable/creatable, fail gracefully.
+            return None, None
+
+        txt_path = downloads / f"{base}.txt"
+        png_path = downloads / f"{base}.png"
+
+        ok_txt = self._save_text_file(text, txt_path)
+        ok_png = self._save_png_from_text(text, png_path)
+
+        return (txt_path if ok_txt else None), (png_path if ok_png else None)
+
+    def _copy_to_clipboard(self, text: str) -> bool:
+        text = text or ""
+
+        system = platform.system().lower()
+
+        try:
+            if system == "darwin":
+                p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+                p.communicate(input=text.encode("utf-8"))
+                return p.returncode == 0
+            elif system == "windows":
+                p = subprocess.Popen(["clip"], stdin=subprocess.PIPE)
+                p.communicate(input=text.encode("utf-8"))
+                return p.returncode == 0
+            p = subprocess.Popen(
+                ["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE
+            )
+            p.communicate(input=text.encode("utf-8"))
+            if p.returncode == 0:
+                return True
+            p = subprocess.Popen(
+                ["xsel", "--clipboard", "--input"], stdin=subprocess.PIPE
+            )
+            p.communicate(input=text.encode("utf-8"))
+            return p.returncode == 0
+        except Exception:
+            return False
+
+    def _handle_copy_request(self) -> None:
+        req = getattr(ctrl_state, "copy_request", None)
+        if not req:
+            return
+
+        if req == "ascii":
+            payload = self._last_ascii_text
+        elif req == "face":
+            payload = self._last_face_text
+        elif req == "hand":
+            payload = self._last_hand_text
+        else:
+            payload = self._last_ascii_text
+
+        _ = self._copy_to_clipboard(payload)
+
+        _ = self._save_yanked_files(payload)
+
+        ctrl_state.copy_request = None
 
 
 def main():

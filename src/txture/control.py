@@ -20,7 +20,18 @@ class ControllerState:
     running: bool = True
     brightness_threshold: int = 200
     gamma: float = 1.0
-    mode: str = "LIVE"  # 'NORMAL/VISUAL/TONE/SATURATION/GAMMA/BRIGHTNESS'
+
+    # Modes: NORMAL/OUTLINE/VISUAL/TONE/HELP/SATURATION/GAMMA/BRIGHTNESS
+    mode: str = "NORMAL"
+
+    # Clipboard/copy stubs (no actual clipboard implementation here)
+    copy_request: str | None = None  # 'any' | 'ascii' | 'face' | 'hand'
+
+    # Internal key-sequence state for y/yy/yf/yh
+    _y_armed: bool = False
+
+    # For HELP mode return
+    _mode_before_help: str = "NORMAL"
 
 
 state = ControllerState()
@@ -40,65 +51,136 @@ def run_controller(state: ControllerState) -> None:
 
 
 def handle_key(state: ControllerState, key: int) -> None:
-    if key == 27:  # ESC
+    # ESC always quits
+    if key == 27:
         state.running = False
         return
-    if state.mode == "LIVE":
-        handle_live_key(state, key)
-    elif state.mode == "TONE":
-        handle_tone_key(state, key)
-    elif state.mode == "VISUAL":
-        handle_visual_key(state, key)
-    elif state.mode in ("SATURATION", "GAMMA", "BRIGHTNESS"):
-        handle_param_key(state, key)
 
+    # Allow q as a universal "back" key (except where noted below)
+    is_q = key == ord("q")
+    is_backspace = key in (8, 127)
 
-def handle_live_key(state: ControllerState, key: int) -> None:
-    if key == ord("v"):
-        state.mode = "VISUAL"
-    elif key == ord("t"):
-        state.mode = "TONE"
+    # --- y / yy / yf / yh (stub only) ---
+    # resolve y-prefixed sequences
+    if state._y_armed:
+        if key == ord("y"):
+            state.copy_request = "ascii"
+            state._y_armed = False
+            return
+        if key == ord("f"):
+            state.copy_request = "face"  # yf
+            state._y_armed = False
+            return
+        if key == ord("h"):
+            state.copy_request = "hand"  # yh
+            state._y_armed = False
+            return
 
+    # arm y prefix
+    if key == ord("y"):
+        state._y_armed = True
+        return
 
-def handle_visual_key(state: ControllerState, key: int) -> None:
-    if key == ord("p"):
-        state.charset = "ascii_punctuation_only"
-    elif key == ord("l"):
-        state.charset = "ascii_letters_only"
-    elif key == ord("d"):
-        state.charset = "ascii_digits_only"
-    elif key == ord("a"):
-        state.charset = "ascii_all"
-    elif key == ord("c"):
-        state.color = not state.color
-    elif key == ord("o"):
-        state.outline = not state.outline
-    elif key == ord("."):
-        state.charset = "ascii_dots_only"
-    elif key in (8, 127):  # backspace
-        state.mode = "LIVE"
+    # --- HELP mode toggle ---
+    if key == ord("h"):
+        if state.mode != "HELP":
+            state._mode_before_help = state.mode
+            state.mode = "HELP"
+        # if already HELP, keep showing HELP (exit via backspace/q)
+        return
 
+    # Exit HELP -> return to previous mode
+    if state.mode == "HELP":
+        if is_backspace or is_q:
+            state.mode = state._mode_before_help or "NORMAL"
+        return
 
-def handle_tone_key(state: ControllerState, key: int) -> None:
-    if key == ord("s"):
-        state.mode = "SATURATION"
-    elif key == ord("g"):
-        state.mode = "GAMMA"
-    elif key == ord("v"):
-        state.mode = "VALUE"
-    elif key == ord("b"):
-        state.mode = "BRIGHTNESS"
-    elif key in (8, 127):  # backspace
-        state.mode = "LIVE"
+    # --- mode-specific navigation and actions ---
 
+    if state.mode == "NORMAL":
+        if key == ord("o"):
+            state.outline = True
+            state.mode = "OUTLINE"
+            return
+        if key == ord("v"):
+            state.mode = "VISUAL"
+            return
+        if key == ord("t"):
+            state.mode = "TONE"
+            return
+        if key == ord("c"):
+            state.color = not state.color
+            return
+        return
 
-def handle_param_key(state: ControllerState, key: int) -> None:
-    if key in (81, 2, ord("h"), ord("-")):  # left arrow
-        adjust_param(state, -0.1)
-    elif key in (83, 3, ord("l"), ord("+")):  # right arrow
-        adjust_param(state, 0.1)
-    elif key in (8, 127):  # backspace
-        state.mode = "TONE"
+    if state.mode == "OUTLINE":
+        if key == ord("o"):
+            state.outline = False
+            state.mode = "NORMAL"
+            return
+        if is_backspace or is_q:
+            state.mode = "NORMAL"
+            return
+        # No other edits allowed in OUTLINE mode
+        return
+
+    if state.mode == "VISUAL":
+        if is_backspace or is_q:
+            state.mode = "NORMAL"
+            return
+        if key == ord("z"):
+            state.charset = "ascii_chinese_only"
+            return
+        if key == ord("k"):
+            state.charset = "ascii_korean_only"
+            return
+        if key == ord("l"):
+            state.charset = "ascii_letters_only"
+            return
+        if key == ord("p"):
+            state.charset = "ascii_punctuation_only"
+            return
+        if key == ord("d"):
+            state.charset = "ascii_digits_only"
+            return
+        if key == ord("."):
+            state.charset = "ascii_dots_only"
+            return
+        return
+
+    if state.mode == "TONE":
+        if is_backspace or is_q:
+            state.mode = "NORMAL"
+            return
+        if key == ord("s"):
+            state.mode = "SATURATION"
+            return
+        if key == ord("g"):
+            state.mode = "GAMMA"
+            return
+        if key == ord("b"):
+            state.mode = "BRIGHTNESS"
+            return
+        return
+
+    if state.mode in ("SATURATION", "GAMMA", "BRIGHTNESS"):
+        # back to TONE
+        if is_backspace or is_q:
+            state.mode = "TONE"
+            return
+
+        # Param adjust mapping per spec:
+        # '-' or RIGHT => UP
+        # '+' or LEFT  => DOWN
+        is_left = key in (81, 2, ord("h"))
+        is_right = key in (83, 3, ord("l"))
+        if key == ord("-") or is_right:
+            adjust_param(state, +0.1)
+            return
+        if key == ord("+") or is_left:
+            adjust_param(state, -0.1)
+            return
+        return
 
 
 def adjust_param(state: ControllerState, delta: float) -> None:
@@ -120,7 +202,14 @@ def format_mode_line(state: ControllerState) -> str:
 
 
 def format_help_line(state: ControllerState) -> str:
-    return KEY_HELP_DICT[state.mode if state.mode != "LIVE" else "LIVE"]
+    base = KEY_HELP_DICT.get(state.mode, "")
+
+    if state._y_armed:
+        yank = "YANK: (y) ascii | (f) face | (h) hand | (backspace/q) cancel"
+        if base:
+            return base + " | " + yank
+        return yank
+    return base
 
 
 def format_info_line(state: ControllerState) -> str:
