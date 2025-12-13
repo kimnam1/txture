@@ -25,6 +25,7 @@ from txture.config import (
     DEFAULT_GESTURE_CONFIDENCE,
     DEFAULT_FACE_CONFIDENCE,
     KEY_COOLDOWN_S,
+    DEFAULT_STABLE_FRAMES,
 )
 from txture.control import (
     state as ctrl_state,
@@ -214,14 +215,16 @@ Screen {
             model_path=str(GESTURE_CKPT)
         )
         self.gesture_filter = EventFilter(
-            min_conf=DEFAULT_GESTURE_CONFIDENCE, stable_frames=5
+            min_conf=DEFAULT_GESTURE_CONFIDENCE,
+            stable_frames=DEFAULT_STABLE_FRAMES,
         )
 
         self.expression_recognizer = ExpressionRecognizer(
             model_path=str(FACE_CKPT)
         )
         self.face_filter = EventFilter(
-            min_conf=DEFAULT_FACE_CONFIDENCE, stable_frames=5
+            min_conf=DEFAULT_FACE_CONFIDENCE,
+            stable_frames=DEFAULT_STABLE_FRAMES,
         )
         self.face_label = None
         self.face_conf = 0.0

@@ -124,6 +124,7 @@ def handle_key(state: ControllerState, key: int) -> None:
             state.mode = "NORMAL"
             return
         if is_backspace or is_q:
+            state.outline = False
             state.mode = "NORMAL"
             return
         # No other edits allowed in OUTLINE mode
