@@ -17,6 +17,7 @@ KEY_HELP_DICT = {
     "GAMMA": "(left/right) -> adjust gamma | (backspace) -> previous",
     "BRIGHTNESS": "(left/right) -> adjust brightness | (backspace) -> previous",
 }
+KEY_COOLDOWN_S = 0.1
 
 
 # Default settings

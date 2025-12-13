@@ -10,12 +10,17 @@ import cv2
 
 from dataclasses import replace
 
+import time
 
 from txture.devices import open_auto_camera
 from txture.pipeline import process_frame
 from txture.loaders import load_lut
 from txture.ascii_render import frame_to_ascii
-from txture.config import DEFAULT_BRIGHTNESS_THRESHOLD, DEFAULT_FPS
+from txture.config import (
+    DEFAULT_BRIGHTNESS_THRESHOLD,
+    DEFAULT_FPS,
+    KEY_COOLDOWN_S,
+)
 from txture.control import (
     state as ctrl_state,
     handle_key,
@@ -123,6 +128,9 @@ Screen {
         self.gesture_filter = None
         self.gesture_label = None
         self.gesture_conf = 0.0
+        self._gesture_fired = None
+        self._gesture_cooldown_s = KEY_COOLDOWN_S
+        self._last_gesture_ts = 0.0
 
         self.effects = EffectStack()
         self.debug_effect = False
@@ -356,6 +364,18 @@ Screen {
     def _on_face_event(self, label: str, conf: float) -> None:
         pass
 
+    def _apply_gesture(self, gesture: str) -> None:
+        now = time.monotonic()
+        if now - self._last_gesture_ts < self._gesture_cooldown_s:
+            return
+        self._last_gesture_ts = now
+        gesture = (gesture or "").strip().lower()
+
+        if not gesture:
+            return
+
+        handle_key(ctrl_state, ord(gesture[0]))
+
     def _crop_square_with_padding(
         self,
         frame: np.ndarray,
@@ -560,6 +580,7 @@ Screen {
     def _render_ascii(
         self, frame, cols: int, rows: int, *, color: bool, outline: bool
     ) -> Union[str, Text]:
+        fired = None
         if self.lut is None:
             return "No LUT loaded."
 
@@ -575,7 +596,7 @@ Screen {
                 label, conf = self.gesture_recognizer.recognize(hands[0])
 
             if self.gesture_filter is not None:
-                _ = self.gesture_filter.update(label, conf)
+                fired = self.gesture_filter.update(label, conf)
             else:
                 _ = None
 
@@ -584,6 +605,8 @@ Screen {
         else:
             self.gesture_label = None
             self.gesture_conf = 0.0
+
+        self._gesture_fired = fired
 
         features = process_frame(
             frame,
@@ -667,6 +690,7 @@ Screen {
     async def _on_tick(self) -> None:
         if self.cap is not None:
             ok, frame = self.cap.read()
+            frame = cv2.flip(frame, 1)
             if not ok:
                 ascii_renderable = "Failed to read from camera."
             else:
@@ -679,7 +703,7 @@ Screen {
                     color=ctrl_state.color,
                     outline=ctrl_state.outline,
                 )
-            frame = cv2.flip(frame, 1)
+
         else:
             ascii_renderable = "No camera connected."
 
@@ -748,6 +772,10 @@ Screen {
                         thresh=0.7,
                     )
                     self.hand_view.update(ascii_hand + "\n" + gesture_status)
+
+        if getattr(self, "_gesture_fired", None) is not None:
+            self._apply_gesture(getattr(self, "_gesture_fired"))
+            self._gesture_fired = None
 
         status_text = self._render_status()
 
