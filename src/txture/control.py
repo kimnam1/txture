@@ -128,12 +128,6 @@ def handle_key(state: ControllerState, key: int) -> None:
         if is_backspace or is_q:
             state.mode = "NORMAL"
             return
-        if key == ord("z"):
-            state.charset = "ascii_chinese_only"
-            return
-        if key == ord("k"):
-            state.charset = "ascii_korean_only"
-            return
         if key == ord("l"):
             state.charset = "ascii_letters_only"
             return

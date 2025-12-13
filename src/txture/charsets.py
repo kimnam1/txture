@@ -1,11 +1,24 @@
-import string
+from pathlib import Path
 import unicodedata as ud
-from typing import Tuple
 from wcwidth import wcwidth
 
+from txture.ascii_maps import (
+    build_glyph_metrics,
+    make_ramp,
+    make_lut,
+    save_metrics_json,
+)
 
-def _sanitize(chars: str, target_width: int = 1) -> str:
-    safe = []
+BASE = Path(__file__).resolve().parents[1]
+OUT_DIR = BASE / "data" / "metrics"
+
+HANZI_PATH = BASE / "data" / "charsets" / "hanzi_10k.txt"
+
+FONT = BASE / "data" / "fonts" / "DejaVuSansMono-Bold.ttf"
+
+
+def _sanitize(chars: str, target_width: int = 2) -> str:
+    safe: list[str] = []
     for ch in chars:
         if ud.category(ch)[0] == "C":
             continue
@@ -14,66 +27,70 @@ def _sanitize(chars: str, target_width: int = 1) -> str:
         if wcwidth(ch) != target_width:
             continue
         safe.append(ch)
+    # 유니코드 code point 기준 정렬 + 중복 제거
     return "".join(sorted(set(safe), key=lambda c: ord(c)))
 
 
-def ascii_all() -> Tuple[str, str]:
-    raw = "".join(ch for ch in string.printable if ch not in "\t\n\r\x0b\x0c")
-    return "ascii_all", _sanitize(raw, target_width=1)
+def _load_hanzi_charset(path: Path) -> str:
+    raw = path.read_text(encoding="utf-8")
+    # 파일이 한 줄에 1글자든, 줄바꿈이 있든 대응
+    raw = (
+        raw.replace("\n", "")
+        .replace("\r", "")
+        .replace("\t", "")
+        .replace(" ", "")
+    )
+
+    # 공백은 별도로 넣는다
+    chars = _sanitize(raw, target_width=2)
+    if " " not in chars:
+        chars = chars + " "
+    return chars
 
 
-def ascii_letters_only() -> Tuple[str, str]:
-    raw = string.ascii_letters + " "
-    return "ascii_letters_only", _sanitize(raw, target_width=1)
+def main() -> None:
+    label = "hanzi_10k"
+
+    if not HANZI_PATH.exists():
+        raise FileNotFoundError(f"Missing charset file: {HANZI_PATH}")
+
+    chars = _load_hanzi_charset(HANZI_PATH)
+
+    # 한자는 글자 폭이 2인 경우가 많다. 폰트/캔버스 크기를 크게 잡는 편이 안정적이다.
+    font_size = 20
+    canvas_size = 48
+    thr = 200
+
+    metrics = build_glyph_metrics(
+        chars,
+        FONT,
+        font_size=font_size,
+        canvas_size=canvas_size,
+        thr=thr,
+    )
+
+    ramp = make_ramp(metrics, invert=False)
+    lut = make_lut(ramp, levels=256)
+
+    meta = {
+        "charset_label": label,
+        "charset_path": str(HANZI_PATH),
+        "charset_count": len(chars),
+        "font_name": FONT.name,
+        "font_path": str(FONT),
+        "font_size": font_size,
+        "canvas_size": canvas_size,
+        "threshold": thr,
+        "target_width": 2,
+    }
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUT_DIR / f"{label}__{FONT.stem}_{font_size}.json"
+
+    save_metrics_json(out_path, meta, metrics, ramp, lut)
+
+    print(f"JSON created: {out_path}")
 
 
-def ascii_punctuation_only() -> Tuple[str, str]:
-    raw = string.punctuation + " "
-    return "ascii_punctuation_only", _sanitize(raw, target_width=1)
-
-
-UNICODE_PUNCT = (
-    string.punctuation + "¡¢£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿×÷“”‘’„‟‹›–—…•"
-)
-
-
-def unicode_punctuation_only() -> tuple[str, str]:
-    return "unicode_punctuation_only", _sanitize(UNICODE_PUNCT, target_width=1)
-
-
-def ascii_dots_only() -> Tuple[str, str]:
-    raw = "•" + " "
-    return "ascii_dots_only", _sanitize(raw, target_width=1)
-
-
-def ascii_digits_only() -> Tuple[str, str]:
-    raw = string.digits + " "
-    return "ascii_digits_only", _sanitize(raw, target_width=1)
-
-
-def ascii_letters_digits_punct() -> Tuple[str, str]:
-    raw = string.ascii_letters + string.digits + string.punctuation
-    return "ascii_letters_digits_punct", _sanitize(raw, target_width=1)
-
-
-# _CJK_SEED_HANGUL = " ·.:;가각간갈감갑값강개객거걱건검겁것게겨결경고과곽관광교구국군권귀규극근금기"
-# _CJK_SEED_HANZI = " 一二三上下大小中日月田目口山川林森雨風海国图爱梦"
-
-
-# def hangul_subset() -> Tuple[str, str]:
-#     return "hangul_subset", _sanitize(_CJK_SEED_HANGUL, target_width=2)
-
-
-# def hanzi_subset() -> Tuple[str, str]:
-#     return "hanzi_subset", _sanitize(_CJK_SEED_HANZI, target_width=2)
-
-
-__all__ = [
-    "ascii_all",
-    "ascii_letters_digits_punct",
-    "ascii_punctuation_only",
-    "ascii_digits_only",
-    "ascii_letters_only",
-    #     "hangul_subset",
-    #     "hanzi_subset",
-]
+if __name__ == "__main__":
+    main()

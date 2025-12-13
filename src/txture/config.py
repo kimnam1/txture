@@ -13,7 +13,7 @@ KEY_HELP_DICT = {
     "NORMAL": "(o) outline | (v) visual | (t) tone | (c) color ON/OFF | (h) help | (esc) quit | (y option) copy",
     "HELP": "(backspace/q) -> close help",
     "OUTLINE": "(o) outline OFF | (backspace/q) -> NORMAL",
-    "VISUAL": "(z/r) chinese | (k) korean | (l) letters | (p) punctuation | (d) digits | (.) dots | (backspace/q) -> NORMAL",
+    "VISUAL": "(l) letters | (p) punctuation | (d) digits | (.) dots | (backspace/q) -> NORMAL",
     "TONE": "(s) saturation | (g) gamma | (b) brightness | (backspace/q) -> NORMAL",
     "SATURATION": "(-/right) UP | (+/left) DOWN | (backspace/q) -> TONE",
     "GAMMA": "(-/right) UP | (+/left) DOWN | (backspace/q) -> TONE",

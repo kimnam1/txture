@@ -120,6 +120,9 @@ Screen {
         self.sat_gain = 1.0
         self.brightness_threshold = DEFAULT_BRIGHTNESS_THRESHOLD
 
+        self._metric_files: dict[str, Path] | None = None
+        self._active_metric_key: str | None = None
+
         self.face_detector = None
         self.expression_recognizer = None
         self.face_filter = None
@@ -163,14 +166,15 @@ Screen {
         self.hand_view: Static = self.query_one("#hand", Static)
         self.status_view: Static = self.query_one("#status", Static)
 
-        files = discover_metric_files()
-        metric_key = "ascii_punctuation_only"
+        self._metric_files = discover_metric_files()
+        metric_key = getattr(ctrl_state, "charset", "ascii_punctuation_only")
 
-        if metric_key not in files:
+        if metric_key not in self._metric_files:
             self.status_view.update(f'metric "{metric_key}" not found')
             return
 
-        self.lut = load_lut(files[metric_key])
+        self.lut = load_lut(self._metric_files[metric_key])
+        self._active_metric_key = metric_key
 
         self.cap, cam_info = open_auto_camera(
             max_devices=3,
@@ -243,14 +247,14 @@ Screen {
                 return lines, colors
 
             dir_to_ch = {
-                0: "─",  # U+2500 or use ━ U+2501
+                0: "|",
                 1: "╱",  # U+2571
-                2: "|",
+                2: "─",  # U+2500 ─ or use ━ U+2501
                 3: "╲",  # U+2572
-                4: "─",
+                4: "|",
                 5: "╱",  # U+2571
-                6: "|",
-                7: "╲ ",  # U+2572
+                6: "─",
+                7: "╲",  # U+2572
             }
 
             out_lines: list[str] = []
@@ -288,8 +292,10 @@ Screen {
         # key code mapping
         keycode: int | None = None
 
-        if len(event.key) == 1:
-            keycode = ord(event.key)
+        ch = getattr(event, "character", None)
+
+        if ch:
+            keycode = ord(ch)
 
         elif event.key == "backspace":
             keycode = 8
@@ -689,6 +695,21 @@ Screen {
 
         return ascii_cols, ascii_rows
 
+    def _ensure_lut_for_charset(self) -> None:
+        if self._metric_files is None:
+            self._metric_files = discover_metric_files()
+
+        key = getattr(ctrl_state, "charset", "ascii_punctuation_only")
+
+        if key == self._active_metric_key:
+            return
+
+        if self._metric_files is None or key not in self._metric_files:
+            return
+
+        self.lut = load_lut(self._metric_files[key])
+        self._active_metric_key = key
+
     async def _on_tick(self) -> None:
         if self.cap is not None:
             ok, frame = self.cap.read()
@@ -697,6 +718,8 @@ Screen {
                 ascii_renderable = "Failed to read from camera."
             else:
                 cols, target_rows = self._calc_ascii_size()
+
+                self._ensure_lut_for_charset()
 
                 ascii_renderable = self._render_ascii(
                     frame=frame,
@@ -710,13 +733,14 @@ Screen {
             ascii_renderable = "No camera connected."
 
         if self.cap is not None and ok:
+            self._ensure_lut_for_charset()
             face_crop = self._get_face_crop(frame)
 
             if face_crop is not None:
                 fw = self.face_view.size.width
                 fh = self.face_view.size.height
                 if fw > 4 and fh > 4:
-                    cols = fw - 2
+                    cols = max(20, fw - 2)
                     rows = max(1, fh - 3)
 
                     stable_face = self._letterbox_to(
@@ -752,7 +776,7 @@ Screen {
                 hw = self.hand_view.size.width
                 hh = self.hand_view.size.height
                 if hw > 4 and hh > 4:
-                    cols = hw - 2
+                    cols = max(20, hw - 2)
                     rows = max(1, hh - 3)
 
                     stable_hand = self._letterbox_to(
