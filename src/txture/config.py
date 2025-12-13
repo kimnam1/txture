@@ -20,7 +20,7 @@ KEY_HELP_DICT = {
 
 
 # Default settings
-DEFAULT_FPS = 3  # Textual rendering so slow..
+DEFAULT_FPS = 6  # Textual rendering so slow..
 DEFAULT_OUTLINE = False
 DEFAULT_COLOR = False
 DEFAULT_OUTLINE = False

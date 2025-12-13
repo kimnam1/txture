@@ -10,10 +10,6 @@ from txture.config import (
 )
 
 
-from ml_models.detection.hand_detector import HandDetector
-from ml_models.detection.face_detector import FaceDetector
-
-
 @dataclass
 class FrameFeatures:
     orig: np.ndarray
@@ -26,11 +22,7 @@ class FrameFeatures:
     face_mask: np.ndarray | None
 
 
-_hand_detector = HandDetector(max_num_hands=1, detection_confidence=0.5)
-_face_detector = FaceDetector(min_detection_confidence=0.5)
-
-
-def process_frame(frame, outline_mode: bool) -> FrameFeatures:
+def process_frame(frame) -> FrameFeatures:
     orig = frame.copy()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -43,46 +35,44 @@ def process_frame(frame, outline_mode: bool) -> FrameFeatures:
 
     # add hand detection visualization
 
-    if outline_mode:
-        blur = cv2.GaussianBlur(gray, BLUR_KERNEL_SIZE, 0)
-        kernel = np.ones(MORPH_KERNEL_SIZE, dtype=np.uint8)
+    blur = cv2.GaussianBlur(gray, BLUR_KERNEL_SIZE, 0)
+    kernel = np.ones(MORPH_KERNEL_SIZE, dtype=np.uint8)
 
-        # 1. edge
-        edges = cv2.Canny(blur, CANNY_LOW, CANNY_HIGH)
+    # 1. edge
+    edges = cv2.Canny(blur, CANNY_LOW, CANNY_HIGH)
 
-        # 2. smooth edges
-        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    # 2. smooth edges
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
 
-        # 2-1. make little thicker to show on screen
-        edges_render = cv2.dilate(edges, kernel, iterations=3)
+    # 2-1. make little thicker to show on screen
+    # edges_render = cv2.dilate(edges, kernel, iterations=3)
 
-        # 3. skeletonize edges
-        edges_skel = cv2.ximgproc.thinning(edges)
+    # 3. skeletonize edges
+    edges_skel = cv2.ximgproc.thinning(edges)
 
-        # 4. compute edge direction
-        gx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=SOBEL_KERNEL_SIZE)
-        gy = cv2.Sobel(blur, cv2.CV_64F, 0, 1, ksize=SOBEL_KERNEL_SIZE)
+    # 4. compute edge direction
+    gx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=SOBEL_KERNEL_SIZE)
+    gy = cv2.Sobel(blur, cv2.CV_64F, 0, 1, ksize=SOBEL_KERNEL_SIZE)
 
-        angle = np.rad2deg(np.arctan2(gy, gx))
-        angle[angle < 0] += 180
-        edge_dir = np.full((h, w), -1, dtype=np.int8)
+    angle = np.rad2deg(np.arctan2(gy, gx))
+    angle[angle < 0] += 180
+    edge_dir = np.full((h, w), -1, dtype=np.int8)
 
-        bins = np.array([0.0, 45.0, 90.0, 135.0], dtype=np.float32)
+    bins = np.array([0.0, 45.0, 90.0, 135.0], dtype=np.float32)
 
-        mask = edges_skel > 0
-        if np.any(mask):
-            ang_valid = angle[mask]
+    mask = edges_skel > 0
+    if np.any(mask):
+        ang_valid = angle[mask]
 
-            diff = np.abs(ang_valid[:, None] - bins[None, :])
+        diff = np.abs(ang_valid[:, None] - bins[None, :])
 
-            idx = np.argmin(diff, axis=1).astype(np.int8)
+        idx = np.argmin(diff, axis=1).astype(np.int8)
 
-            edge_dir[mask] = idx
+        edge_dir[mask] = idx
 
-        processed = cv2.cvtColor(edges_render, cv2.COLOR_GRAY2BGR)
-    else:
-        processed = orig.copy()
-        edge_dir = np.full(gray.shape, -1, dtype=np.int8)
+    processed = (
+        orig.copy()
+    )  # not using outline in this file. Outline is only for direction calculation.
 
     return FrameFeatures(
         orig=orig,

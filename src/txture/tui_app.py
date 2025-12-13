@@ -19,7 +19,23 @@ from txture.control import (
     format_help_line,
     format_conf_line,
 )
+from txture.effects import EffectStack, EffectLayer, EffectContext
 from rich.text import Text
+
+
+def _build_ctx(app: "TxtureApp") -> EffectContext:
+    return EffectContext(
+        mode=ctrl_state.mode,
+        outline=ctrl_state.outline,
+        color=ctrl_state.color,
+        face_label=app.face_label,
+        face_conf=app.face_conf,
+        gesture_label=app.gesture_label,
+        gesture_conf=app.gesture_conf,
+        flags={"debug_effect": getattr(app, "debug_effect_enabled", False)},
+        payload={},
+    )
+
 
 BASE = Path(__file__).resolve().parents[2]
 METRIC_DIR = BASE / "data" / "metrics"
@@ -105,6 +121,9 @@ Screen {
         self.gesture_label = None
         self.gesture_conf = 0.0
 
+        self.effects = EffectStack()
+        self.debug_effect = False
+
     def compose(self) -> ComposeResult:
         yield Container(
             Container(
@@ -166,12 +185,91 @@ Screen {
             f"Camera index = {cam_info.index} backend = {cam_info.backend} score = {cam_info.score: .2f}"
         )
 
+        def _demo_ascii_layer(
+            lines: list[str],
+            colors: list[list[tuple[int, int, int]]] | None,
+            ctx: EffectContext,
+        ) -> tuple[list[str], list[list[tuple[int, int, int]]] | None]:
+            if not ctx.flags.get("debug_effect", False):
+                return lines, colors
+            if not lines:
+                return lines, colors
+            msg = "[DEBUG EFFECT ON]"
+            width = max(len(lines[0]), len(msg))
+            new_lines = list(lines)
+            row = new_lines[0].ljust(width)
+            new_lines[0] = (msg + row[len(msg) :])[:width]
+            return new_lines, colors
+
+        self.add_effect(
+            EffectLayer(
+                name="demo_ascii_layer",
+                priority=10,
+                enabled=True,
+                apply_ascii=_demo_ascii_layer,
+            )
+        )
+
+        def _outline_layer(
+            lines: list[str],
+            colors: list[list[tuple[int, int, int]]] | None,
+            ctx: EffectContext,
+        ) -> tuple[list[str], list[list[tuple[int, int, int]]] | None]:
+            if not ctx.outline:
+                return lines, colors
+
+            grid = ctx.payload.get("outline_grid")
+            if grid is None or not lines:
+                return lines, colors
+
+            dir_to_ch = {
+                0: "─",  # U+2500 or use ━ U+2501
+                1: "╱",  # U+2571
+                2: "|",
+                3: "╲",  # U+2572
+                4: "─",
+                5: "╱",  # U+2571
+                6: "|",
+                7: "╲ ",  # U+2572
+            }
+
+            out_lines: list[str] = []
+
+            for y, line in enumerate(lines):
+                width = len(line)
+                row = [" "] * width
+
+                if y < grid.shape[0]:
+                    max_x = min(width, grid.shape[1])
+                    for x in range(max_x):
+                        d = int(grid[y, x])
+                        if d >= 0:
+                            row[x] = dir_to_ch.get(d, "|")
+
+                out_lines.append("".join(row))
+
+            return out_lines, None
+
+        self.add_effect(
+            EffectLayer(
+                name="outline_layer",
+                priority=20,
+                enabled=True,
+                apply_ascii=_outline_layer,
+            )
+        )
+
     async def on_key(self, event: Key) -> None:
         # end key
         if event.key in ("escape", "ctrl+q"):
             await self.action_quit()
             return
 
+        if event.key.lower() == "z":
+            self.debug_effect_enabled = not getattr(
+                self, "debug_effect_enabled", False
+            )
+            return
         # key code mapping
         keycode: int | None = None
 
@@ -341,34 +439,62 @@ Screen {
 
         hand_points = hands[0]
 
+        vis_frame = frame.copy()
+
+        for x, y, z, vis in hand_points:
+            cv2.circle(vis_frame, (int(x), int(y)), 3, (0, 255, 0), -1)
+
         # Calculate bounding box
         xs = [p[0] for p in hand_points]
         ys = [p[1] for p in hand_points]
 
         padding = 30
-        h, w = frame.shape[:2]
+        h, w = vis_frame.shape[:2]
         x1 = max(0, int(min(xs)) - padding)
         y1 = max(0, int(min(ys)) - padding)
         x2 = min(w, int(max(xs)) + padding)
         y2 = min(h, int(max(ys)) + padding)
 
         hand_crop = self._crop_square_with_padding(
-            frame, x1, y1, x2, y2, pad_ratio=0.2
-        ).copy()
+            vis_frame, x1, y1, x2, y2, pad_ratio=0.2
+        )
 
         if hand_crop.size == 0:
             return None
 
-        # Draw keypoints
-        for x, y, z, vis in hand_points:
-            rel_x, rel_y = int(x) - x1, int(y) - y1
-            if (
-                0 <= rel_x < hand_crop.shape[1]
-                and 0 <= rel_y < hand_crop.shape[0]
-            ):
-                cv2.circle(hand_crop, (rel_x, rel_y), 3, (255, 0, 0), -1)
-
         return hand_crop
+
+    def outline_grid(
+        self, edge_dir: np.ndarray, rows: int, cols: int
+    ) -> np.ndarray:
+        h, w = edge_dir.shape
+        if rows <= 0 or cols <= 0:
+            return np.zeros((0, 0), dtype=np.int8)
+
+        cell_h = max(1, h // rows)
+        cell_w = max(1, w // cols)
+
+        out = np.full((rows, cols), -1, dtype=np.int8)
+
+        for r in range(rows):
+            for c in range(cols):
+                sy = r * cell_h
+                sx = c * cell_w
+                ey = min(h, (r + 1) * cell_h)
+                ex = min(w, (c + 1) * cell_w)
+
+                cell = edge_dir[sy:ey, sx:ex]
+                if cell.size == 0:
+                    continue
+
+                valid = cell[cell >= 0]
+                if valid.size == 0:
+                    continue
+
+                hist = np.bincount(valid.astype(np.int32), minlength=8)[:8]
+                out[r, c] = int(np.argmax(hist))
+
+        return out
 
     def _render_ascii_raw(
         self, frame, cols: int, rows: int, *, color, outline
@@ -378,13 +504,15 @@ Screen {
 
         features = process_frame(
             frame,
-            outline_mode=outline,
         )
 
-        edge_arg = features.edge_dir if outline else None
+        ctx = _build_ctx(self)
+        processed = self.effects.apply_frame(features.processed, ctx)
+
+        edge_arg = None
 
         lines, colors = frame_to_ascii(
-            features.processed,
+            processed,
             self.lut,
             cols=cols,
             char_aspect=2.0,
@@ -400,6 +528,17 @@ Screen {
 
         if colors is not None:
             colors = colors[:max_rows]
+
+        if outline and features.edge_dir is not None:
+            rows_eff = len(lines)
+            cols_eff = len(lines[0]) if lines else 0
+            outlined = self.outline_grid(
+                features.edge_dir, rows=rows_eff, cols=cols_eff
+            )
+            # You can use 'outlined' for further processing if needed
+            ctx.payload["outline_grid"] = outlined
+
+        lines, colors = self.effects.apply_ascii(lines, colors, ctx)
 
         if not color or colors is None:
             return "\n".join(lines)
@@ -443,13 +582,15 @@ Screen {
 
         features = process_frame(
             frame,
-            outline_mode=outline,
         )
 
-        edge_arg = features.edge_dir if outline else None
+        ctx = _build_ctx(self)
+        processed = self.effects.apply_frame(features.processed, ctx)
+
+        edge_arg = None
 
         lines, colors = frame_to_ascii(
-            features.processed,
+            processed,
             self.lut,
             cols=cols,
             char_aspect=2.0,
@@ -465,6 +606,17 @@ Screen {
 
         if colors is not None:
             colors = colors[:max_rows]
+
+        if outline and features.edge_dir is not None:
+            rows_eff = len(lines)
+            cols_eff = len(lines[0]) if lines else 0
+            outlined = self.outline_grid(
+                features.edge_dir, rows=rows_eff, cols=cols_eff
+            )
+            # You can use 'outlined' for further processing if needed
+            ctx.payload["outline_grid"] = outlined
+
+        lines, colors = self.effects.apply_ascii(lines, colors, ctx)
 
         if not color or colors is None:
             return "\n".join(lines)
@@ -482,6 +634,9 @@ Screen {
         if self.cap is not None:
             self.cap.release()
             self.cap = None
+
+    def add_effect(self, layer: EffectLayer) -> None:
+        self.effects.add_layer(layer)
 
     def _render_status(self) -> str:
         outline_flag = "ON" if ctrl_state.outline else "OFF"

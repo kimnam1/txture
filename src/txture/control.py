@@ -12,13 +12,13 @@ from txture.config import (
 @dataclass
 class ControllerState:
     charset: str = "ascii_punctuation_only"
-    outline: bool = False
+    outline: bool = True
     color: bool = True
     saturation_gain: float = 1.0
     running: bool = True
     brightness_threshold: int = 200
     gamma: float = 1.0
-    mode: str = "LIVE"  # 'LIVE/TONE/VISUAL/SATURATION/GAMMA/BRIGHTNESS'
+    mode: str = "LIVE"  # 'NORMAL/VISUAL/TONE/SATURATION/GAMMA/BRIGHTNESS'
 
 
 state = ControllerState()
