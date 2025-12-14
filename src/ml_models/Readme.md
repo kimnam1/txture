@@ -1,230 +1,161 @@
-# Hand Gesture & Facial Expression Recognition API
+# ML Models
 
-Simple interface documentation for gesture and expression recognition modules.
+This directory contains all **machine learning models and related tools** used in this project.  
+The models are mainly responsible for **facial expression recognition** and **hand gesture recognition**, and are designed to be integrated into a real-time, terminal-based ASCII interaction system.
 
-## 🚀 Installation
-
-```bash
-pip install opencv-python mediapipe torch torchvision scikit-learn numpy
-```
+The overall design follows a **modular and pipeline-oriented structure**, allowing each model to be trained, evaluated, and deployed independently.
 
 ---
 
-## 📌 Hand Gesture Recognition
+## 📁 Directory Structure
 
-### Interface 1: HandDetector (Detection)
-
-```python
-from gesture.hand_detector import HandDetector
-import cv2
-
-detector = HandDetector(max_num_hands=1, detection_confidence=0.5)
-cap = cv2.VideoCapture(0)
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-    
-    hands = detector.detect(frame)  # Returns list of hand landmarks
-    # hands: [[(x1, y1, z1, vis1), (x2, y2, z2, vis2), ..., (x21, y21, z21, vis21)], ...]
-    
-    cv2.imshow("Hand Detection", frame)
-    if cv2.waitKey(1) == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
-```
-
-**Method**: `detect(frame)` → List of hand landmarks (21 keypoints per hand)
+ml_models/
+├── detection/          # Face and hand detection (MediaPipe + OpenCV)
+├── expressions/        # Facial expression recognition
+│   ├── model.py        # Expression recognition network (EfficientNet)
+│   ├── train.py        # Training script
+│   ├── inference.py    # Inference interface for runtime usage
+│   ├── preprocess_align_enhanced.py  # Face detection and alignment preprocessing
+│   └── checkpoints/    # Trained model weights
+├── gestures/           # Hand gesture recognition
+│   ├── model.py        # Feature extraction + MLP classifier
+│   ├── train.py        # Training script
+│   ├── inference.py    # Inference interface
+│   └── checkpoints/    # Trained model weights
+├── requirements.txt    # Python dependencies
+└── README.md
 
 ---
 
-### Interface 2: GestureRecognizer (Classification)
+## 🔍 Module Overview
 
-```python
-from gesture.inference import GestureRecognizer
-from gesture.hand_detector import HandDetector
-import cv2
+### 1️⃣ Facial Expression Recognition (expressions/)
 
-hand_detector = HandDetector()
-gesture_recognizer = GestureRecognizer(model_path='checkpoints/gesture_model.pkl')
+- **Task**: Classify facial expressions from detected face regions.
+- **Model Architecture**:
+  - EfficientNet-B2 backbone (via timm)
+  - Implemented with PyTorch
+- **Key Features**:
+  - Expression classification with confidence scores
+  - Full probability distribution over all expression classes
+  - Threshold-based intelligent emotion decision to suppress weak expressions
+  - Optional face alignment using MediaPipe facial landmarks
 
-cap = cv2.VideoCapture(0)
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-    
-    hands = hand_detector.detect(frame)
-    
-    for hand_landmarks in hands:
-        gesture_label, confidence = gesture_recognizer.recognize(hand_landmarks)
-        print(f"Gesture: {gesture_label}, Confidence: {confidence:.4f}")
-        
-        if gesture_label == 'C':
-            print("Switch to Chinese characters")
-        elif gesture_label == 'K':
-            print("Switch to Korean characters")
-    
-    cv2.imshow("Gesture Recognition", frame)
-    if cv2.waitKey(1) == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
-```
-
-**Method**: `recognize(hand_landmarks)` → (gesture_label: str, confidence: float)
+Main files:
+- model.py: Expression recognition model definition
+- train.py: Model training and validation
+- inference.py: Unified inference interface for real-time systems
+- preprocess_align_enhanced.py: Dataset preprocessing with face detection and alignment
 
 ---
 
-## 👤 Facial Expression Recognition
+### 2️⃣ Hand Gesture Recognition (gestures/)
 
-### Interface 3: FaceDetector (Detection)
+- **Task**: Static hand gesture classification.
+- **Model Architecture**:
+  - MediaPipe 21-point hand landmarks
+  - Geometric feature engineering (relative coordinates + fingertip distances)
+  - MLP classifier implemented with scikit-learn
+- **Characteristics**:
+  - Lightweight and fast inference
+  - Suitable for real-time interaction
+  - Easy to extend with new gesture classes
 
-```python
-from gesture.face_detector import FaceDetector
-import cv2
-
-detector = FaceDetector(min_detection_confidence=0.5)
-cap = cv2.VideoCapture(0)
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-    
-    faces = detector.detect(frame)  # Returns list of face bounding boxes
-    # faces: [(x1, y1, x2, y2), (x1, y1, x2, y2), ...]
-    
-    for (x1, y1, x2, y2) in faces:
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    
-    cv2.imshow("Face Detection", frame)
-    if cv2.waitKey(1) == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
-```
-
-**Method**: `detect(frame)` → List of bounding boxes [(x1, y1, x2, y2), ...]
+Main files:
+- model.py: Feature extraction and MLP-based classifier
+- train.py: Training script with simple data augmentation
+- inference.py: Runtime gesture recognition interface
 
 ---
 
-### Interface 4: ExpressionRecognizer (Classification)
+## 🚀 Quick Start
 
-```python
-from gesture.face_detector import FaceDetector
-from expression.inference import ExpressionRecognizer
-import cv2
+### Install Dependencies
 
-face_detector = FaceDetector()
-expression_recognizer = ExpressionRecognizer(model_path='checkpoints/expression_model.pth')
-
-cap = cv2.VideoCapture(0)
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-    
-    faces = face_detector.detect(frame)
-    
-    for (x1, y1, x2, y2) in faces:
-        face_crop = frame[y1:y2, x1:x2]
-        expression_label, confidence = expression_recognizer.recognize(face_crop)
-        print(f"Expression: {expression_label}, Confidence: {confidence:.4f}")
-        
-        # Use confidence to control ASCII art saturation
-        saturation = int(confidence * 255)
-        print(f"ASCII saturation level: {saturation}")
-    
-    cv2.imshow("Expression Recognition", frame)
-    if cv2.waitKey(1) == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
-```
-
-**Method**: `recognize(face_image)` → (expression_label: str, confidence: float)
+pip install -r requirements.txt
 
 ---
 
-## 🔗 Quick Integration Example
+### Train Facial Expression Model
 
-```python
-from gesture.hand_detector import HandDetector
-from gesture.inference import GestureRecognizer
-from gesture.face_detector import FaceDetector
-from expression.inference import ExpressionRecognizer
-import cv2
+python expressions/train.py \
+  --dataset path/to/expression_dataset \
+  --output expressions/checkpoints/expression_model.pth
 
-# Initialize all detectors and recognizers
-hand_detector = HandDetector()
-gesture_recognizer = GestureRecognizer('checkpoints/gesture_model.pkl')
-face_detector = FaceDetector()
-expression_recognizer = ExpressionRecognizer('checkpoints/expression_model.pth')
+Example dataset structure:
 
-cap = cv2.VideoCapture(0)
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-    
-    # Gesture Recognition
-    hands = hand_detector.detect(frame)
-    gesture_info = None
-    for hand_landmarks in hands:
-        gesture_label, confidence = gesture_recognizer.recognize(hand_landmarks)
-        gesture_info = (gesture_label, confidence)
-    
-    # Expression Recognition
-    faces = face_detector.detect(frame)
-    expression_info = None
-    for (x1, y1, x2, y2) in faces:
-        face_crop = frame[y1:y2, x1:x2]
-        expression_label, confidence = expression_recognizer.recognize(face_crop)
-        expression_info = (expression_label, confidence)
-    
-    # Pass to ASCII art module
-    if gesture_info and expression_info:
-        gesture_label, gesture_conf = gesture_info
-        expression_label, expression_conf = expression_info
-        
-        # Your ASCII art generation logic here
-        # ascii_art_generator.update(frame, gesture_label, expression_conf)
-    
-    cv2.imshow("Combined Recognition", frame)
-    if cv2.waitKey(1) == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
-```
+dataset/
+├── train/
+│   ├── happy/
+│   ├── sad/
+│   └── neutral/
+└── test/
+    ├── happy/
+    ├── sad/
+    └── neutral/
 
 ---
 
-## 📊 Output Summary
+### Train Gesture Recognition Model
 
-| Interface | Input | Output |
-|-----------|-------|--------|
-| `HandDetector.detect()` | Video frame | List of 21 keypoints per hand |
-| `GestureRecognizer.recognize()` | Hand landmarks | Gesture label + confidence |
-| `FaceDetector.detect()` | Video frame | List of face bounding boxes |
-| `ExpressionRecognizer.recognize()` | Face image crop | Expression label + confidence |
+python gestures/train.py \
+  --dataset path/to/gesture_dataset \
+  --output gestures/checkpoints/gesture_model.pkl
+
+Example dataset structure:
+
+dataset/
+└── train/
+    ├── A/
+    ├── B/
+    └── C/
 
 ---
 
-## 📁 Model Files
+## 🧠 Inference Examples
 
-Place pre-trained models in `checkpoints/`:
-- `gesture_model.pkl` - Trained gesture classifier
-- `expression_model.pth` - Trained expression classifier
+### Facial Expression Recognition
 
-To train models, see the respective `train.py` scripts in `gesture/` and `expression/` directories.
+from expressions.inference import ExpressionRecognizer
+
+recognizer = ExpressionRecognizer(
+    "expressions/checkpoints/expression_model.pth"
+)
+
+label, confidence, all_probs = recognizer.recognize_all_emotions(face_image)
+
+---
+
+### Hand Gesture Recognition
+
+from gestures.inference import GestureRecognizer
+
+recognizer = GestureRecognizer(
+    "gestures/checkpoints/gesture_model.pkl"
+)
+
+label, confidence = recognizer.recognize(hand_landmarks)
+
+---
+
+## 🔗 Integration with the Main System
+
+- This directory only handles **perception and recognition**
+- It does not include:
+  - ASCII rendering logic
+  - UI or terminal interaction logic
+- All models expose clean inference interfaces and are called by the upper-level system to:
+  - Map facial expressions to ASCII rendering effects
+  - Use hand gestures as control commands
+
+---
+
+## 📝 Notes
+
+- All models are designed to run **in real time on CPU**
+- The implementation prioritizes:
+  - Interpretability
+  - Modularity
+  - Educational and experimental use
+
+---
