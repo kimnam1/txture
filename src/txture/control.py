@@ -8,6 +8,7 @@ from txture.config import (
     KEY_HELP_DICT,
     DEFAULT_OUTLINE,
     DEFAULT_COLOR,
+    FACE_MAP,
 )
 
 
@@ -143,7 +144,7 @@ def handle_key(state: ControllerState, key: int) -> None:
         if key == ord("d"):
             state.charset = "ascii_digits_only"
             return
-        if key == ord("."):
+        if key == ord(".") or key == ord("o"):
             state.charset = "ascii_dots_only"
             return
         return
@@ -252,7 +253,15 @@ def format_conf_line(
     bar, pct = make_conf_bar(conf, length=length, thresh=thresh)
 
     title_show = title if title else "-"
-    label_show = label if label else "-"
+
+    label_width = 10
+    label_fmt = label.center(label_width) if label else "-".center(label_width)
+
+    if title == "FACE":
+        label_emoji = FACE_MAP.get(label, "-") if label else "-"
+        label_show = f"{label_emoji} ({label_fmt})" if label else "-"
+    else:
+        label_show = label if label else "-"
 
     first_line = f"{title_show}: {label_show}"
 

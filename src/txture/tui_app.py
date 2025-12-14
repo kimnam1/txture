@@ -26,6 +26,8 @@ from txture.config import (
     DEFAULT_FACE_CONFIDENCE,
     KEY_COOLDOWN_S,
     DEFAULT_STABLE_FRAMES,
+    RAINBOW_RIPPLE_SECONDS,
+    DEFAULT_RENDER_FPS,  # for text render only fps. later be used
 )
 from txture.control import (
     state as ctrl_state,
@@ -47,7 +49,16 @@ def _build_ctx(app: "TxtureApp") -> EffectContext:
         gesture_label=app.gesture_label,
         gesture_conf=app.gesture_conf,
         flags={"debug_effect": getattr(app, "debug_effect_enabled", False)},
-        payload={},
+        payload={
+            "frame_idx": app._frame_idx,
+            "effects": {
+                "rainbow_ripple": {
+                    "active": app._rainbow_ripple_active,
+                    "start_idx": app._rainbow_ripple_start_idx,
+                    "duration_frames": app._rainbow_ripple_duration_frames,
+                }
+            },
+        },
     )
 
 
@@ -130,6 +141,14 @@ Screen {
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._frame_idx = 0
+        # Run the app loop at DEFAULT_FPS, but only re-render UI at DEFAULT_RENDER_FPS.
+        # (Detection / state updates can still happen every tick.)
+        self._render_fps = max(1, int(DEFAULT_RENDER_FPS))
+        self._render_stride = max(
+            1, int(round(DEFAULT_FPS / self._render_fps))
+        )
+        self._last_render_frame_idx = -1
         self.cap = None
         self.lut = None
         self.sat_gain = 1.0
@@ -154,7 +173,14 @@ Screen {
         self._last_gesture_ts = 0.0
 
         self.effects = EffectStack()
+
         self.debug_effect = False
+
+        self._rainbow_ripple_active = False
+        self._rainbow_ripple_start_idx = 0
+        self._rainbow_ripple_duration_frames = int(
+            DEFAULT_FPS * RAINBOW_RIPPLE_SECONDS
+        )  # 5 seconds
 
         self._last_ascii_text: str = ""
         self._last_face_text: str = ""
@@ -229,7 +255,9 @@ Screen {
         self.face_label = None
         self.face_conf = 0.0
 
-        self.tick_timer = self.set_interval(1 / DEFAULT_FPS, self._on_tick)
+        self.tick_timer = self.set_interval(
+            1 / DEFAULT_FPS, self._on_tick
+        )  # app loop fps
 
         self.status_view.update(
             f"Camera index = {cam_info.index} backend = {cam_info.backend} score = {cam_info.score: .2f}"
@@ -306,6 +334,107 @@ Screen {
                 priority=20,
                 enabled=True,
                 apply_ascii=_outline_layer,
+            )
+        )
+
+        def _rainbow_ripple_layer(
+            lines: list[str],
+            colors: list[list[tuple[int, int, int]]] | None,
+            ctx: EffectContext,
+        ) -> tuple[list[str], list[list[tuple[int, int, int]]] | None]:
+            effect = (ctx.payload.get("effects") or {}).get(
+                "rainbow_ripple"
+            ) or {}
+            if not effect.get("active"):
+                return lines, colors
+
+            frame_idx = ctx.payload.get("frame_idx", 0)
+            start_idx = effect.get("start_idx", 0)
+            duration = effect.get("duration_frames", 1)
+            if duration <= 0:
+                return lines, colors
+
+            age = max(0, frame_idx - start_idx)
+            period_frames = int(DEFAULT_FPS * 0.25)
+            t = (age % period_frames) / period_frames
+
+            rows = len(lines)
+            if rows <= 0:
+                return lines, colors
+            cols = max((len(line) for line in lines), default=0)
+            if cols <= 0:
+                return lines, colors
+
+            if colors is None or len(colors) != rows:
+                colors = [
+                    [(255, 255, 255) for _ in range(cols)] for _ in range(rows)
+                ]
+            else:
+                fixed: list[list[tuple[int, int, int]]] = []
+                for r in range(rows):
+                    row = colors[r] if r < len(colors) else []
+                    if len(row) < cols:
+                        row = row + [(255, 255, 255)] * (cols - len(row))
+                    else:
+                        row = list(row[:cols])
+                    fixed.append(row)
+                colors = fixed
+
+            cx = (cols - 1) / 2.0
+            cy = (rows - 1) / 2.0
+            max_radius = (cx**2 + cy**2) ** 0.5
+
+            SPEED = 60
+
+            ring_radius = t * max_radius * SPEED
+            ring_thickness = max(1.0, 0.1 * max_radius)
+
+            def _hsv_to_rgb(
+                h: float, s: float, v: float
+            ) -> tuple[int, int, int]:
+                h = h % 1.0
+                i = int(h * 6.0)
+                f = (h * 6.0) - i
+                p = v * (1.0 - s)
+                q = v * (1.0 - f * s)
+                r = v * (1.0 - (1.0 - f) * s)
+                i = i % 6
+                if i == 0:
+                    rr, gg, bb = v, r, p
+                elif i == 1:
+                    rr, gg, bb = q, v, p
+                elif i == 2:
+                    rr, gg, bb = p, v, r
+                elif i == 3:
+                    rr, gg, bb = p, q, v
+                elif i == 4:
+                    rr, gg, bb = r, p, v
+                else:
+                    rr, gg, bb = v, p, q
+                return (int(rr * 255), int(gg * 255), int(bb * 255))
+
+            for y in range(rows):
+                line = lines[y]
+                for x in range(min(cols, len(line))):
+                    ch = line[x]
+                    if ch == " ":
+                        continue
+                    dx = x - cx
+                    dy = y - cy
+                    r = (dx * dx + dy * dy) ** 0.5
+                    if abs(r - ring_radius) <= ring_thickness:
+                        # Hue rotates as the ring expands.
+                        hue = (r / max_radius + 0.9 * t) % 1.0
+                        colors[y][x] = _hsv_to_rgb(hue, 1.0, 1.0)
+
+            return lines, colors
+
+        self.add_effect(
+            EffectLayer(
+                name="rainbow_ripple_layer",
+                priority=15,
+                enabled=True,
+                apply_ascii=_rainbow_ripple_layer,
             )
         )
 
@@ -396,7 +525,8 @@ Screen {
         return face_crop if face_crop.size > 0 else None
 
     def _on_face_event(self, label: str, conf: float) -> None:
-        pass
+        if label == "happy" and conf >= 0.9:
+            self.trigger_rainbow_ripple(RAINBOW_RIPPLE_SECONDS)
 
     def _apply_gesture(self, gesture: str) -> None:
         now = time.monotonic()
@@ -488,11 +618,11 @@ Screen {
         out[y0 : y0 + new_h, x0 : x0 + new_w] = resized
         return out
 
-    def _get_hand_crop(self, frame) -> Optional[np.ndarray]:
-        """Get cropped hand region with keypoints drawn"""
-        if self.hand_detector is None:
-            return None
-        hands = self.hand_detector.detect(frame)
+    def _get_hand_crop(self, frame, hands) -> Optional[np.ndarray]:
+        """Get cropped hand region with keypoints drawn.
+
+        `hands` must be the output of `self.hand_detector.detect(frame)`.
+        """
         if not hands:
             return None
 
@@ -555,6 +685,13 @@ Screen {
 
         return out
 
+    def trigger_rainbow_ripple(self, duration_s: float) -> None:
+        if self._rainbow_ripple_active:
+            return
+        self._rainbow_ripple_active = True
+        self._rainbow_ripple_start_idx = self._frame_idx
+        self._rainbow_ripple_duration_frames = int(DEFAULT_FPS * duration_s)
+
     def _render_ascii_raw(
         self, frame, cols: int, rows: int, *, color, outline
     ):
@@ -614,33 +751,8 @@ Screen {
     def _render_ascii(
         self, frame, cols: int, rows: int, *, color: bool, outline: bool
     ) -> Union[str, Text]:
-        fired = None
         if self.lut is None:
             return "No LUT loaded."
-
-        if (
-            self.hand_detector is not None
-            and self.gesture_recognizer is not None
-        ):
-            hands = self.hand_detector.detect(frame)
-            label = None
-            conf = 0.0
-
-            if hands:
-                label, conf = self.gesture_recognizer.recognize(hands[0])
-
-            if self.gesture_filter is not None:
-                fired = self.gesture_filter.update(label, conf)
-            else:
-                _ = None
-
-            self.gesture_label = label
-            self.gesture_conf = conf
-        else:
-            self.gesture_label = None
-            self.gesture_conf = 0.0
-
-        self._gesture_fired = fired
 
         features = process_frame(
             frame,
@@ -763,33 +875,86 @@ Screen {
         self._active_metric_key = key
 
     async def _on_tick(self) -> None:
+        # App loop runs at DEFAULT_FPS.
+        # UI rendering runs at DEFAULT_RENDER_FPS (stride-based gating).
+        should_render = (self._frame_idx % self._render_stride) == 0
+
+        ascii_renderable: Union[str, Text]
+        ok = False
+        frame = None
+        hands = None
+
         if self.cap is not None:
             ok, frame = self.cap.read()
-            frame = cv2.flip(frame, 1)
-            if not ok:
-                ascii_renderable = "Failed to read from camera."
+            if ok:
+                self._frame_idx += 1
+                frame = cv2.flip(frame, 1)
             else:
-                cols, target_rows = self._calc_ascii_size()
-
-                target_rows = max(3, target_rows - 1)
-
-                self._ensure_lut_for_charset()
-
-                ascii_renderable = self._render_ascii(
-                    frame=frame,
-                    cols=cols,
-                    rows=target_rows,
-                    color=ctrl_state.color,
-                    outline=ctrl_state.outline,
-                )
-
+                ascii_renderable = "Failed to read from camera."
         else:
             ascii_renderable = "No camera connected."
 
-        if self.cap is not None and ok:
-            self._ensure_lut_for_charset()
-            face_crop = self._get_face_crop(frame)
+        # Keep gesture control responsive by running hand detect every tick.
+        if ok and frame is not None:
+            if self.hand_detector is not None:
+                hands = self.hand_detector.detect(frame)
 
+            fired = None
+            if hands and self.gesture_recognizer is not None:
+                label, conf = self.gesture_recognizer.recognize(hands[0])
+            else:
+                label, conf = None, 0.0
+
+            if self.gesture_filter is not None:
+                fired = self.gesture_filter.update(label, conf)
+
+            self.gesture_label = label
+            self.gesture_conf = conf
+            self._gesture_fired = fired
+
+        # Apply gesture (if any) every tick.
+        if getattr(self, "_gesture_fired", None) is not None:
+            self._apply_gesture(getattr(self, "_gesture_fired"))
+            self._gesture_fired = None
+
+        # Stop ripple after duration (time is tracked in frames).
+        if self._rainbow_ripple_active:
+            elapsed = self._frame_idx - self._rainbow_ripple_start_idx
+            if elapsed >= self._rainbow_ripple_duration_frames:
+                self._rainbow_ripple_active = False
+
+        # If we are not rendering this tick, still handle copy requests.
+        if not should_render:
+            self._handle_copy_request()
+            return
+
+        # --- Rendering path (lower FPS) ---
+        if ok and frame is not None:
+            self._ensure_lut_for_charset()
+
+            cols, target_rows = self._calc_ascii_size()
+            target_rows = max(3, target_rows - 1)
+
+            ascii_renderable = self._render_ascii(
+                frame=frame,
+                cols=cols,
+                rows=target_rows,
+                color=ctrl_state.color,
+                outline=ctrl_state.outline,
+            )
+        else:
+            # Keep previous content if camera read failed.
+            ascii_renderable = (
+                "Failed to read from camera."
+                if self.cap is not None
+                else "No camera connected."
+            )
+
+        # Face / hand panes are also rendered at render FPS.
+        if ok and frame is not None:
+            self._ensure_lut_for_charset()
+
+            face_crop = self._get_face_crop(frame)
             if face_crop is not None:
                 fw = self.face_view.size.width
                 fh = self.face_view.size.height
@@ -825,7 +990,7 @@ Screen {
                         self._to_plain_text(ascii_face) + "\n" + face_status
                     )
 
-            hand_crop = self._get_hand_crop(frame)
+            hand_crop = self._get_hand_crop(frame, hands)
             if hand_crop is not None:
                 hw = self.hand_view.size.width
                 hh = self.hand_view.size.height
@@ -861,10 +1026,7 @@ Screen {
                         self._to_plain_text(ascii_hand) + "\n" + gesture_status
                     )
 
-        if getattr(self, "_gesture_fired", None) is not None:
-            self._apply_gesture(getattr(self, "_gesture_fired"))
-            self._gesture_fired = None
-
+        # Cache latest ASCII text for yank.
         self._last_ascii_text = self._to_plain_text(ascii_renderable)
 
         mode_text = self._render_mode_line()
@@ -873,6 +1035,8 @@ Screen {
         self.ascii_view.update(ascii_renderable)
         self.status_view.update(mode_text)
         self.help_view.update(help_text)
+
+        self._last_render_frame_idx = self._frame_idx
         self._handle_copy_request()
 
     def _to_plain_text(self, renderable: Union[str, Text, None]) -> str:
