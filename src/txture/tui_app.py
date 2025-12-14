@@ -26,8 +26,9 @@ from txture.config import (
     DEFAULT_FACE_CONFIDENCE,
     KEY_COOLDOWN_S,
     DEFAULT_STABLE_FRAMES,
-    RAINBOW_RIPPLE_SECONDS,
-    DEFAULT_RENDER_FPS,  # for text render only fps. later be used
+    HAPPY_RAINBOW_RIPPLE_SECONDS,
+    DEFAULT_RENDER_FPS,
+    SAD_SECONDS,
 )
 from txture.control import (
     state as ctrl_state,
@@ -52,11 +53,16 @@ def _build_ctx(app: "TxtureApp") -> EffectContext:
         payload={
             "frame_idx": app._frame_idx,
             "effects": {
-                "rainbow_ripple": {
-                    "active": app._rainbow_ripple_active,
-                    "start_idx": app._rainbow_ripple_start_idx,
-                    "duration_frames": app._rainbow_ripple_duration_frames,
-                }
+                "happy_rainbow_ripple": {
+                    "active": app._happy_rainbow_ripple_active,
+                    "start_idx": app._happy_rainbow_ripple_start_idx,
+                    "duration_frames": app._happy_rainbow_ripple_duration_frames,
+                },
+                "sad_rain": {
+                    "active": app._sad_rain_active,
+                    "start_idx": app._sad_rain_start_idx,
+                    "duration_frames": app._sad_rain_duration_frames,
+                },
             },
         },
     )
@@ -109,7 +115,7 @@ Screen {
 }
 
 #status{
-    height: 6;
+    height: 7;
     border: #CDF233;
 }
 
@@ -176,11 +182,15 @@ Screen {
 
         self.debug_effect = False
 
-        self._rainbow_ripple_active = False
-        self._rainbow_ripple_start_idx = 0
-        self._rainbow_ripple_duration_frames = int(
-            DEFAULT_FPS * RAINBOW_RIPPLE_SECONDS
-        )  # 5 seconds
+        self._happy_rainbow_ripple_active = False
+        self._happy_rainbow_ripple_start_idx = 0
+        self._happy_rainbow_ripple_duration_frames = int(
+            DEFAULT_FPS * HAPPY_RAINBOW_RIPPLE_SECONDS
+        )
+
+        self._sad_rain_active = False
+        self._sad_rain_start_idx = 0
+        self._sad_rain_duration_frames = int(DEFAULT_FPS * SAD_SECONDS)
 
         self._last_ascii_text: str = ""
         self._last_face_text: str = ""
@@ -337,13 +347,65 @@ Screen {
             )
         )
 
-        def _rainbow_ripple_layer(
+        def _border_layer(
+            lines: list[str],
+            colors: list[list[tuple[int, int, int]]] | None,
+            ctx: EffectContext,
+        ) -> tuple[list[str], list[list[tuple[int, int, int]]] | None]:
+            effect = ctx.payload.get("effects") or {}
+            rr = effect.get("happy_rainbow_ripple") or {}
+            sr = effect.get("sad_rain") or {}
+            if not rr.get("active") and not sr.get("active"):
+                return lines, colors
+
+            if not lines:
+                return lines, colors
+
+            emoji = "█"
+            rows = len(lines)
+            cols = max((len(line) for line in lines), default=0)
+            if cols <= 0:
+                return lines, colors
+
+            out_lines: list[str] = []
+            for y in range(rows):
+                line = lines[y]
+                # Ensure consistent width
+                if len(line) < cols:
+                    line = line.ljust(cols)
+                else:
+                    line = line[:cols]
+
+                row = list(line)
+                if y == 0 or y == rows - 1:
+                    for x in range(cols):
+                        row[x] = emoji
+                else:
+                    row[0] = emoji
+                    if cols > 1:
+                        row[cols - 1] = emoji
+
+                out_lines.append("".join(row))
+
+            # Border is a text overlay. Keep existing colors.
+            return out_lines, colors
+
+        self.add_effect(
+            EffectLayer(
+                name="emoji_border_layer",
+                priority=16,
+                enabled=True,
+                apply_ascii=_border_layer,
+            )
+        )
+
+        def _happy_rainbow_ripple_layer(
             lines: list[str],
             colors: list[list[tuple[int, int, int]]] | None,
             ctx: EffectContext,
         ) -> tuple[list[str], list[list[tuple[int, int, int]]] | None]:
             effect = (ctx.payload.get("effects") or {}).get(
-                "rainbow_ripple"
+                "happy_rainbow_ripple"
             ) or {}
             if not effect.get("active"):
                 return lines, colors
@@ -355,7 +417,7 @@ Screen {
                 return lines, colors
 
             age = max(0, frame_idx - start_idx)
-            period_frames = int(DEFAULT_FPS * 0.25)
+            period_frames = int(DEFAULT_FPS * 1)
             t = (age % period_frames) / period_frames
 
             rows = len(lines)
@@ -382,9 +444,10 @@ Screen {
 
             cx = (cols - 1) / 2.0
             cy = (rows - 1) / 2.0
-            max_radius = (cx**2 + cy**2) ** 0.5
+            y_scale = 2
+            max_radius = (cx**2 + (cy * y_scale) ** 2) ** 0.5
 
-            SPEED = 60
+            SPEED = 0.5
 
             ring_radius = t * max_radius * SPEED
             ring_thickness = max(1.0, 0.1 * max_radius)
@@ -420,7 +483,7 @@ Screen {
                     if ch == " ":
                         continue
                     dx = x - cx
-                    dy = y - cy
+                    dy = (y - cy) * y_scale
                     r = (dx * dx + dy * dy) ** 0.5
                     if abs(r - ring_radius) <= ring_thickness:
                         # Hue rotates as the ring expands.
@@ -431,10 +494,110 @@ Screen {
 
         self.add_effect(
             EffectLayer(
-                name="rainbow_ripple_layer",
+                name="_happy_rainbow_ripple_layer",
                 priority=15,
                 enabled=True,
-                apply_ascii=_rainbow_ripple_layer,
+                apply_ascii=_happy_rainbow_ripple_layer,
+            )
+        )
+
+        def _sad_rain_layer(
+            lines: list[str],
+            colors: list[list[tuple[int, int, int]]] | None,
+            ctx: EffectContext,
+        ) -> tuple[list[str], list[list[tuple[int, int, int]]] | None]:
+            effect = (ctx.payload.get("effects") or {}).get("sad_rain") or {}
+            if not effect.get("active"):
+                return lines, colors
+
+            if not lines:
+                return lines, colors
+
+            frame_idx = ctx.payload.get("frame_idx", 0)
+            start_idx = effect.get("start_idx", 0)
+            duration = effect.get("duration_frames", 1)
+            if duration <= 0:
+                return lines, colors
+
+            age = max(0, frame_idx - start_idx)
+            if age >= duration:
+                return lines, colors
+
+            seed = int(effect.get("seed", 0))
+
+            rows = len(lines)
+            cols = max((len(line) for line in lines), default=0)
+            if rows <= 0 or cols <= 0:
+                return lines, colors
+
+            top_h = max(1, 2 * rows // 3)
+            rain_ch = "▓"
+
+            def _u01(a: int) -> float:
+                x = (a ^ 0x9E3779B9) & 0xFFFFFFFF
+                x = (x ^ (x >> 16)) * 0x85EBCA6B & 0xFFFFFFFF
+                x = (x ^ (x >> 13)) * 0xC2B2AE35 & 0xFFFFFFFF
+                x = (x ^ (x >> 16)) & 0xFFFFFFFF
+                return (x / 0xFFFFFFFF) if x else 0.0
+
+            out_lines: list[str] = []
+
+            for y in range(rows):
+                line = lines[y]
+                if len(line) < cols:
+                    line = line.ljust(cols)
+                else:
+                    line = line[:cols]
+
+                if y >= top_h:
+                    out_lines.append(line)
+                    continue
+
+                row = list(line)
+
+                for x in range(cols):
+                    base = seed + x * 1315423911
+
+                    # Per-column timing offset
+                    phase = int(_u01(base) * 90)
+
+                    # Choose a per-column base length and vary it slowly over time.
+                    # This draws a single continuous segment that ALWAYS starts at y=0,
+                    # so the streak looks attached to the top and never "floats".
+                    max_len = top_h
+                    base_len = 1 + int(_u01(base + 7) * (max_len - 1))
+
+                    # Slow wobble in length
+                    wobble = 0.6 + 0.6 * _u01(base + 17 + (age // 3) * 97)
+                    target_len = max(1, min(max_len, int(base_len * wobble)))
+
+                    # Add an on/off cycle so columns don't stay filled forever.
+                    gap = 2 + int(_u01(base + 23) * (max(3, top_h // 2)))
+                    cycle = max_len + gap
+
+                    # Progress within cycle
+                    p = (age + phase) % cycle
+
+                    # During the active part, length grows from 1..target_len.
+                    # During the gap part, nothing is drawn.
+                    if p < max_len:
+                        # Use a ramp so it "flows" rather than snapping.
+                        flow = p / max(1, (max_len - 1))
+                        length = max(1, int(1 + flow * (target_len - 1)))
+
+                        if y < length:
+                            row[x] = rain_ch
+
+                out_lines.append("".join(row))
+
+            return out_lines, colors
+
+        self.add_effect(
+            EffectLayer(
+                name="sad_rain_layer",
+                priority=14,
+                enabled=True,
+                apply_ascii=_sad_rain_layer,
             )
         )
 
@@ -525,8 +688,12 @@ Screen {
         return face_crop if face_crop.size > 0 else None
 
     def _on_face_event(self, label: str, conf: float) -> None:
+        if not getattr(ctrl_state, "expression", False):
+            return
         if label == "happy" and conf >= 0.9:
-            self.trigger_rainbow_ripple(RAINBOW_RIPPLE_SECONDS)
+            self.trigger_happy_rainbow_ripple(HAPPY_RAINBOW_RIPPLE_SECONDS)
+        if label == "sad" and conf >= 0.7:
+            self.trigger_sad_rain(SAD_SECONDS)
 
     def _apply_gesture(self, gesture: str) -> None:
         now = time.monotonic()
@@ -685,12 +852,21 @@ Screen {
 
         return out
 
-    def trigger_rainbow_ripple(self, duration_s: float) -> None:
-        if self._rainbow_ripple_active:
+    def trigger_happy_rainbow_ripple(self, duration_s: float) -> None:
+        if self._happy_rainbow_ripple_active:
             return
-        self._rainbow_ripple_active = True
-        self._rainbow_ripple_start_idx = self._frame_idx
-        self._rainbow_ripple_duration_frames = int(DEFAULT_FPS * duration_s)
+        self._happy_rainbow_ripple_active = True
+        self._happy_rainbow_ripple_start_idx = self._frame_idx
+        self._happy_rainbow_ripple_duration_frames = int(
+            DEFAULT_FPS * duration_s
+        )
+
+    def trigger_sad_rain(self, duration_s: float) -> None:
+        if self._sad_rain_active:
+            return
+        self._sad_rain_active = True
+        self._sad_rain_start_idx = self._frame_idx
+        self._sad_rain_duration_frames = int(DEFAULT_FPS * duration_s)
 
     def _render_ascii_raw(
         self, frame, cols: int, rows: int, *, color, outline
@@ -833,8 +1009,9 @@ Screen {
             "ascii_all": "ALL",
         }
         charset_label = charset_label_map.get(charset_key, charset_key)
+        expression_label = "ON" if ctrl_state.expression else "OFF"
 
-        return f"MODE: {ctrl_state.mode}\nOUTLINE: {outline_flag}\nCOLOR: {color_flag}\nCHARACTER: {charset_label}"
+        return f"MODE: {ctrl_state.mode}\nOUTLINE: {outline_flag}\nCOLOR: {color_flag}\nCHARACTER: {charset_label}\nEXPRESSION: {expression_label}"
 
     def _append_line_to_ascii(
         self, ascii_renderable: Union[str, Text], line: str
@@ -917,15 +1094,25 @@ Screen {
             self._apply_gesture(getattr(self, "_gesture_fired"))
             self._gesture_fired = None
 
-        # Stop ripple after duration (time is tracked in frames).
-        if self._rainbow_ripple_active:
-            elapsed = self._frame_idx - self._rainbow_ripple_start_idx
-            if elapsed >= self._rainbow_ripple_duration_frames:
-                self._rainbow_ripple_active = False
+        if ctrl_state.outline and getattr(ctrl_state, "expression", False):
+            ctrl_state.expression = False
+
+        # Stop happy rainbow ripple after duration (time is tracked in frames).
+        if self._happy_rainbow_ripple_active:
+            elapsed = self._frame_idx - self._happy_rainbow_ripple_start_idx
+            if elapsed >= self._happy_rainbow_ripple_duration_frames:
+                self._happy_rainbow_ripple_active = False
+
+        # Stop sad rain after duration (time is tracked in frames).
+        if self._sad_rain_active:
+            elapsed = self._frame_idx - self._sad_rain_start_idx
+            if elapsed >= self._sad_rain_duration_frames:
+                self._sad_rain_active = False
 
         # If we are not rendering this tick, still handle copy requests.
         if not should_render:
             self._handle_copy_request()
+            self._handle_effect_request()
             return
 
         # --- Rendering path (lower FPS) ---
@@ -1038,6 +1225,7 @@ Screen {
 
         self._last_render_frame_idx = self._frame_idx
         self._handle_copy_request()
+        self._handle_effect_request()
 
     def _to_plain_text(self, renderable: Union[str, Text, None]) -> str:
         if renderable is None:
@@ -1196,6 +1384,19 @@ Screen {
         _ = self._save_yanked_files(payload)
 
         ctrl_state.copy_request = None
+
+    def _handle_effect_request(self) -> None:
+        req = getattr(ctrl_state, "effect_request", None)
+        if not req:
+            return
+
+        if req == "happy_rainbow_ripple":
+            self.trigger_happy_rainbow_ripple(HAPPY_RAINBOW_RIPPLE_SECONDS)
+
+        if req == "sad_rain":
+            self.trigger_sad_rain(SAD_SECONDS)
+
+        ctrl_state.effect_request = None
 
 
 def main():

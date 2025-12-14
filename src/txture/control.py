@@ -9,6 +9,7 @@ from txture.config import (
     DEFAULT_OUTLINE,
     DEFAULT_COLOR,
     FACE_MAP,
+    DEFAULT_EXPRESSION,
 )
 
 
@@ -17,6 +18,7 @@ class ControllerState:
     charset: str = "ascii_punctuation_only"
     outline: bool = DEFAULT_OUTLINE
     color: bool = DEFAULT_COLOR
+    expression: bool = DEFAULT_EXPRESSION
     # saturation_gain: float = 1.0
     running: bool = True
     brightness_threshold: int = 200
@@ -26,7 +28,9 @@ class ControllerState:
     mode: str = "NORMAL"
 
     # Clipboard/copy stubs (no actual clipboard implementation here)
-    copy_request: str | None = None  # 'any' | 'ascii' | 'face' | 'gesture'
+    copy_request: str | None = None  # 'ascii' | 'face' | 'gesture'
+
+    effect_request: str | None = None  # 'rainbow_ripple' | '(rain)pluie'
 
     # Internal key-sequence state for y/yy/yf/yh
     _y_armed: bool = False
@@ -55,6 +59,14 @@ def handle_key(state: ControllerState, key: int) -> None:
     # ESC always quits
     if key == 27:
         state.running = False
+        return
+    # DEBUG: Trigger effects
+    if key == ord("H"):
+        state.effect_request = "happy_rainbow_ripple"
+        return
+
+    if key == ord("S"):
+        state.effect_request = "sad_rain"
         return
 
     # Allow q as a universal "back" key (except where noted below)
@@ -116,6 +128,9 @@ def handle_key(state: ControllerState, key: int) -> None:
             return
         if key == ord("c"):
             state.color = not state.color
+            return
+        if key == ord("e"):
+            state.expression = not state.expression
             return
         return
 

@@ -10,7 +10,7 @@ MORPH_KERNEL_SIZE = (3, 3)
 CONTROLLER_WINDOW_SIZE = (1, 1)
 CONTROLLER_WINDOW_POS = (-100, -100)
 KEY_HELP_DICT = {
-    "NORMAL": "[o] outline ON | [c] color ON/OFF | [v] visual",
+    "NORMAL": "[o] outline ON | [c] color ON/OFF | [e] expression ON/OFF | [v] visual",
     "HELP": "[backspace/q] close help",
     "OUTLINE": "[o] outline OFF | [backspace/q] Back to NORMAL",
     "VISUAL": "[l] letters | [p] punctuation | [d] digits | [./o] dots | [backspace/q] Back to NORMAL",
@@ -21,9 +21,10 @@ Y_SEQUENCE_WINDOW_S = 0.5
 
 # Default settings
 DEFAULT_FPS = 20  # App FPS
-DEFAULT_RENDER_FPS = 3  # Rendering so slow... Seperate FPS for text rendering
+DEFAULT_RENDER_FPS = 5  # Rendering so slow... Seperate FPS for text rendering
 DEFAULT_OUTLINE = False
-DEFAULT_COLOR = True
+DEFAULT_COLOR = False
+DEFAULT_EXPRESSION = False
 DEFAULT_GESTURE_CONFIDENCE = 0.5
 DEFAULT_FACE_CONFIDENCE = 0.5
 DEFAULT_STABLE_FRAMES = 3
@@ -38,4 +39,5 @@ FACE_MAP = {
 }
 
 # Effect settings
-RAINBOW_RIPPLE_SECONDS = 1
+HAPPY_RAINBOW_RIPPLE_SECONDS = 3
+SAD_SECONDS = 3
